@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { ML_CONFIG, supabaseAdmin } from '@/lib/supabase'
+import { signSession, SESSION_COOKIE, SESSION_MAX_AGE } from '@/lib/session'
 
-const SESSION_COOKIE = 'lupa_session'
 const PKCE_COOKIE = 'lupa_pkce'
-const SESSION_MAX_AGE = 60 * 60 * 24 * 30 // 30 days
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -113,7 +112,7 @@ export async function GET(request: Request) {
     }
 
     const response = NextResponse.redirect(new URL('/dashboard', request.url))
-    response.cookies.set(SESSION_COOKIE, user.id, {
+    response.cookies.set(SESSION_COOKIE, signSession(user.id), {
       httpOnly: true,
       secure: true,
       sameSite: 'lax',

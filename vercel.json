@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/seed-prices",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-tokens",
+      "schedule": "0 */4 * * *"
     }
   ]
 }

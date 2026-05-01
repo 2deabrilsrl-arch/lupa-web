@@ -1,6 +1,22 @@
+// TODO: replace with real Chrome Web Store URL once extension is published
+const INSTALL_URL = 'https://chromewebstore.google.com/'
+
 export default function Home() {
   return (
     <>
+      {/* Header */}
+      <header className="site-header">
+        <div className="container site-header-inner">
+          <a href="/" className="site-brand">
+            <img src="/favicon.png" alt="" width={28} height={28} />
+            <span>Lupa Precios</span>
+          </a>
+          <nav className="site-nav">
+            <a href="/api/auth/login" className="nav-login">Iniciar sesión</a>
+          </nav>
+        </div>
+      </header>
+
       {/* Hero */}
       <section className="hero">
         <div className="container">
@@ -12,7 +28,7 @@ export default function Home() {
             Historial de precios, detector de descuentos falsos y análisis inteligente de opiniones.
             Dejá de pagar de más.
           </p>
-          <a href="#instalar" className="hero-cta">
+          <a href={INSTALL_URL} target="_blank" rel="noopener" className="hero-cta">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             Instalar Lupa Precios gratis
           </a>
@@ -126,7 +142,7 @@ export default function Home() {
         <div className="container">
           <h2>Dejá de pagar de más</h2>
           <p>Más de 1.000 productos ya están siendo trackeados. Sumate.</p>
-          <a href="#" className="hero-cta">
+          <a href={INSTALL_URL} target="_blank" rel="noopener" className="hero-cta">
             Instalar Lupa Precios gratis
           </a>
         </div>
