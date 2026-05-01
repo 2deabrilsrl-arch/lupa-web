@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import { ML_CONFIG, supabaseAdmin } from '@/lib/supabase'
 
 const SESSION_COOKIE = 'lupa_session'
+const PKCE_COOKIE = 'lupa_pkce'
 const SESSION_MAX_AGE = 60 * 60 * 24 * 30 // 30 days
 
 export async function GET(request: Request) {
@@ -12,22 +14,46 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL('/error?reason=no_code', request.url))
   }
 
+  const cookieStore = await cookies()
+  const verifier = cookieStore.get(PKCE_COOKIE)?.value
+
+  if (!verifier) {
+    return NextResponse.redirect(new URL('/error?reason=no_verifier', request.url))
+  }
+
   try {
+    const tokenBody = new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: ML_CONFIG.clientId,
+      client_secret: ML_CONFIG.clientSecret,
+      code,
+      redirect_uri: ML_CONFIG.redirectUri,
+      code_verifier: verifier
+    })
+
     const tokenRes = await fetch('https://api.mercadolibre.com/oauth/token', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        grant_type: 'authorization_code',
-        client_id: ML_CONFIG.clientId,
-        client_secret: ML_CONFIG.clientSecret,
-        code,
-        redirect_uri: ML_CONFIG.redirectUri
-      })
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: tokenBody.toString()
     })
 
     if (!tokenRes.ok) {
-      console.error('[Auth] Token exchange failed:', await tokenRes.text())
-      return NextResponse.redirect(new URL('/error?reason=auth_failed', request.url))
+      const errBody = await tokenRes.text()
+      console.error('[Auth] Token exchange failed:', tokenRes.status, errBody)
+      let mlError = ''
+      try {
+        const parsed = JSON.parse(errBody)
+        mlError = parsed.error || parsed.message || errBody.slice(0, 200)
+      } catch {
+        mlError = errBody.slice(0, 200)
+      }
+      const url = new URL('/error', request.url)
+      url.searchParams.set('reason', 'auth_failed')
+      url.searchParams.set('detail', `${tokenRes.status}: ${mlError}`)
+      return NextResponse.redirect(url)
     }
 
     const tokenData = await tokenRes.json()
@@ -94,6 +120,7 @@ export async function GET(request: Request) {
       path: '/',
       maxAge: SESSION_MAX_AGE
     })
+    response.cookies.delete(PKCE_COOKIE)
 
     return response
   } catch (err) {
