@@ -44,11 +44,19 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { data: categories, error: catErr } = await supabaseAdmin
+  // Optional ?site=MLB filter to target a specific country
+  const { searchParams } = new URL(request.url)
+  const siteFilter = searchParams.get('site')
+
+  let query = supabaseAdmin
     .from('tracked_categories')
     .select('id, ml_category_id, name, site_id, priority, last_crawled_at, items_count')
     .eq('is_active', true)
+  if (siteFilter) query = query.eq('site_id', siteFilter)
+
+  const { data: categories, error: catErr } = await query
     .order('last_crawled_at', { ascending: true, nullsFirst: true })
+    .order('id', { ascending: true })
     .limit(MAX_CATEGORIES_PER_RUN)
     .returns<CategoryRow[]>()
 
