@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/discover-items",
       "schedule": "0 2,14 * * *"
+    },
+    {
+      "path": "/api/cron/process-alerts",
+      "schedule": "*/30 * * * *"
     }
   ]
 }
