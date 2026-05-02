@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { processAlertsForItem } from '@/lib/alerts'
 
 // Vercel Cron: runs every 6 hours (configured in vercel.json)
 // Updates prices of all tracked items via ML public API
@@ -57,6 +58,16 @@ export async function GET(request: Request) {
           discountPercent = Math.round(((originalPrice - price) / originalPrice) * 100)
         }
 
+        // Get previous price for alert evaluation
+        const { data: prevRow } = await supabaseAdmin
+          .from('price_history')
+          .select('price')
+          .eq('item_id', item.id)
+          .order('captured_at', { ascending: false })
+          .limit(1)
+          .maybeSingle<{ price: number }>()
+        const previousPrice = prevRow ? Number(prevRow.price) : null
+
         // 3. Insert price using deduplication function
         await supabaseAdmin.rpc('insert_price_if_changed', {
           p_item_id: item.id,
@@ -73,6 +84,13 @@ export async function GET(request: Request) {
           .from('items')
           .update({ last_seen_at: new Date().toISOString() })
           .eq('id', item.id)
+
+        // Fire any user alerts for this item
+        if (previousPrice == null || previousPrice !== price) {
+          processAlertsForItem(item.id, price, previousPrice).catch(err =>
+            console.error('[Cron] Alert processing failed for item', item.id, err)
+          )
+        }
 
         updated++
 
