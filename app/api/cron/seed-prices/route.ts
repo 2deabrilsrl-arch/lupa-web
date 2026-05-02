@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { processAlertsForItem } from '@/lib/alerts'
-import { mlFetch } from '@/lib/ml-service'
+import { fetchMlInfo } from '@/lib/ml-fetch'
 
 // Vercel Cron: runs every 6 hours (configured in vercel.json)
 // Updates prices of all tracked items via ML public API
@@ -32,23 +32,20 @@ export async function GET(request: Request) {
     let updated = 0
     let errors = 0
 
-    // 2. Fetch current price for each item from ML API (authenticated)
+    // 2. Fetch current price for each item from ML API (authenticated, item OR catalog product)
     for (const item of items) {
       try {
-        const res = await mlFetch(
-          `/items/${item.ml_item_id}?attributes=price,original_price,currency_id,sale_price`
-        )
+        const mlData = await fetchMlInfo(item.ml_item_id)
 
-        if (!res.ok) {
-          console.log(`[Cron] ML API error for ${item.ml_item_id}: ${res.status}`)
+        if (!mlData) {
+          console.log(`[Cron] ML fetch failed for ${item.ml_item_id}`)
           errors++
           continue
         }
 
-        const mlData = await res.json()
-        const price = mlData.sale_price?.amount || mlData.price || 0
-        const originalPrice = mlData.original_price || null
-        const currency = mlData.currency_id || 'ARS'
+        const price = mlData.price
+        const originalPrice = mlData.original_price
+        const currency = mlData.currency
 
         if (price === 0) continue
 

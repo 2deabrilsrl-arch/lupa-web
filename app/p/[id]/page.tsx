@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { supabaseAdmin } from '@/lib/supabase'
-import { extractMlItemId, siteIdFromMlId } from '@/lib/ml-url'
-import { mlFetch } from '@/lib/ml-service'
+import { extractMlItemId } from '@/lib/ml-url'
+import { fetchMlInfo } from '@/lib/ml-fetch'
 import PriceChart from './PriceChart'
 
 interface ItemRow {
@@ -47,28 +47,24 @@ async function ensureItemTracked(mlItemId: string): Promise<ItemRow | null> {
     .maybeSingle<ItemRow>()
   if (existing) return existing
 
-  // Fetch from ML API (authenticated — public access was deprecated)
   try {
-    const res = await mlFetch(
-      `/items/${mlItemId}?attributes=id,title,thumbnail,permalink,site_id,seller_id,price,original_price,sale_price,currency_id,category_id`
-    )
-    if (!res.ok) {
-      console.warn('[/p] ML fetch failed', mlItemId, res.status)
+    const ml = await fetchMlInfo(mlItemId)
+    if (!ml) {
+      console.warn('[/p] ML fetch failed (item & product both)', mlItemId)
       return null
     }
-    const ml = await res.json()
 
     const { data: created, error } = await supabaseAdmin
       .from('items')
       .upsert(
         {
-          ml_item_id: mlItemId,
-          title: ml.title ?? '(sin título)',
-          thumbnail_url: ml.thumbnail ?? null,
-          permalink: ml.permalink ?? null,
-          category_id: ml.category_id ?? null,
-          seller_id: ml.seller_id ?? null,
-          site_id: ml.site_id ?? siteIdFromMlId(mlItemId),
+          ml_item_id: ml.ml_id,
+          title: ml.title,
+          thumbnail_url: ml.thumbnail_url,
+          permalink: ml.permalink,
+          category_id: ml.category_id,
+          seller_id: ml.seller_id,
+          site_id: ml.site_id,
           is_active: true,
           last_seen_at: new Date().toISOString()
         },
@@ -79,18 +75,15 @@ async function ensureItemTracked(mlItemId: string): Promise<ItemRow | null> {
 
     if (error || !created) return null
 
-    const price = ml.sale_price?.amount ?? ml.price ?? 0
-    if (price > 0) {
-      await supabaseAdmin.rpc('insert_price_if_changed', {
-        p_item_id: created.id,
-        p_price: price,
-        p_original_price: ml.original_price ?? null,
-        p_currency: ml.currency_id ?? 'ARS',
-        p_discount_percent: null,
-        p_price_type: ml.original_price ? 'promotion' : 'standard',
-        p_source: 'web_lookup'
-      })
-    }
+    await supabaseAdmin.rpc('insert_price_if_changed', {
+      p_item_id: created.id,
+      p_price: ml.price,
+      p_original_price: ml.original_price,
+      p_currency: ml.currency,
+      p_discount_percent: null,
+      p_price_type: ml.original_price ? 'promotion' : 'standard',
+      p_source: 'web_lookup'
+    })
 
     return created
   } catch (err) {
