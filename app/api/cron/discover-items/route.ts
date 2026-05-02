@@ -32,6 +32,7 @@ interface CategoryRow {
   id: number
   ml_category_id: string
   name: string
+  site_id: string
   priority: number | null
   last_crawled_at: string | null
   items_count: number | null
@@ -45,7 +46,7 @@ export async function GET(request: Request) {
 
   const { data: categories, error: catErr } = await supabaseAdmin
     .from('tracked_categories')
-    .select('id, ml_category_id, name, priority, last_crawled_at, items_count')
+    .select('id, ml_category_id, name, site_id, priority, last_crawled_at, items_count')
     .eq('is_active', true)
     .order('last_crawled_at', { ascending: true, nullsFirst: true })
     .limit(MAX_CATEGORIES_PER_RUN)
@@ -64,7 +65,7 @@ export async function GET(request: Request) {
 
   for (const cat of categories) {
     try {
-      const res = await mlFetch(`/highlights/MLA/category/${cat.ml_category_id}`)
+      const res = await mlFetch(`/highlights/${cat.site_id}/category/${cat.ml_category_id}`)
       if (!res.ok) {
         console.warn('[Discover] highlights failed', cat.ml_category_id, res.status)
         errors++
