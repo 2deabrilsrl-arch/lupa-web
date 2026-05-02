@@ -590,6 +590,81 @@ a:hover { text-decoration: underline; }
 .pp-deal-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
 .pp-deal-sub { font-size: 13px; line-height: 1.45; }
 
+/* Chart time-range tabs + summary */
+.chart-tabs {
+  display: flex; gap: 4px;
+  margin-bottom: 12px;
+}
+.chart-tab {
+  flex: 1;
+  background: var(--gray-50);
+  border: 1px solid var(--gray-100);
+  padding: 8px 4px;
+  font-size: 12px; font-weight: 600;
+  color: var(--gray-600);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+.chart-tab:hover { background: #fff; border-color: var(--celeste); }
+.chart-tab-active {
+  background: var(--blue) !important; color: #fff !important;
+  border-color: var(--blue) !important;
+}
+.chart-summary {
+  margin-top: 12px;
+  border-top: 1px solid var(--gray-100);
+  padding-top: 12px;
+}
+.chart-summary-row {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.chart-summary-cell {
+  text-align: center;
+  padding: 6px 4px;
+  background: var(--gray-50);
+  border-radius: 6px;
+}
+.chart-summary-label {
+  font-size: 10px; color: var(--gray-400);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+.chart-summary-val { font-size: 13px; font-weight: 600; }
+.chart-summary-val.chart-good { color: var(--green); }
+.chart-summary-val.chart-bad { color: var(--red); }
+.chart-summary-val.chart-current { color: var(--blue); }
+.chart-summary-meta {
+  font-size: 11px; color: var(--gray-400);
+  text-align: center; margin-top: 8px;
+}
+
+/* Dashboard sort + filter controls */
+.dashboard-controls {
+  display: flex; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 16px;
+  align-items: center;
+}
+.dashboard-sort {
+  padding: 8px 12px;
+  border: 1px solid var(--gray-200);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px; color: var(--gray-800);
+  cursor: pointer;
+}
+.dashboard-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--gray-800);
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--gray-50);
+  user-select: none;
+}
+.dashboard-toggle input { margin: 0; }
+
 /* Header secondary link */
 .nav-link-secondary {
   font-size: 14px; font-weight: 500; color: var(--gray-800);

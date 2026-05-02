@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { supabaseAdmin } from '@/lib/supabase'
 import { extractMlItemId } from '@/lib/ml-url'
 import { fetchMlInfo } from '@/lib/ml-fetch'
+import { mlWebUrl } from '@/lib/format'
 import PriceChart from './PriceChart'
 
 interface ItemRow {
@@ -124,9 +125,10 @@ async function loadProduct(mlItemId: string): Promise<ProductData | null> {
   const item = await ensureItemTracked(mlItemId)
   if (!item) return null
 
+  // Fetch up to 1 year of history; the chart component filters client-side by range
   const { data: rawHistory } = await supabaseAdmin.rpc('get_price_history', {
     p_ml_item_id: mlItemId,
-    p_days: 90
+    p_days: 365
   })
   const history = (rawHistory as PriceRow[] | null) ?? []
 
@@ -281,7 +283,9 @@ export default async function ProductPage({ params }: RouteContext) {
   }
 
   const { item, history, stats, fakeDiscount, reviewsAnalysis, dealScore } = data
-  const productUrl = item.permalink ?? `https://www.mercadolibre.com.ar/p/${mlId}`
+  // permalink can be "" for catalog products — treat empty as missing
+  const validPermalink = item.permalink && item.permalink.trim().length > 0
+  const productUrl = validPermalink ? item.permalink! : mlWebUrl(mlId, item.site_id)
 
   const dealScoreColor = (score: number) =>
     score >= 8 ? 'pp-deal-good' : score >= 5 ? 'pp-deal-neutral' : 'pp-deal-bad'
@@ -368,6 +372,7 @@ export default async function ProductPage({ params }: RouteContext) {
 
                 <PriceChart
                   history={history.map(h => ({ price: Number(h.price), captured_at: h.captured_at }))}
+                  currency={stats.currency}
                 />
 
                 <div className="pp-stats">

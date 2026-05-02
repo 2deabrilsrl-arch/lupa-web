@@ -16,17 +16,49 @@ export interface TrackedItem {
 const formatPrice = (p: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(p)
 
+type SortMode = 'recent' | 'price_asc' | 'price_desc' | 'biggest_drop' | 'near_min'
+
 export default function DashboardClient({ items }: { items: TrackedItem[] }) {
   const [search, setSearch] = useState('')
+  const [sort, setSort] = useState<SortMode>('recent')
+  const [onlyDrops, setOnlyDrops] = useState(false)
   const [openAlertFor, setOpenAlertFor] = useState<number | null>(null)
   const [alertPrice, setAlertPrice] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [feedback, setFeedback] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
 
-  const filtered = useMemo(
-    () => items.filter(i => i.title?.toLowerCase().includes(search.toLowerCase())),
-    [items, search]
-  )
+  const filtered = useMemo(() => {
+    let list = items.filter(i => i.title?.toLowerCase().includes(search.toLowerCase()))
+    if (onlyDrops) {
+      list = list.filter(i => Number(i.max_price) > Number(i.latest_price))
+    }
+    const dropPct = (i: TrackedItem) => {
+      const max = Number(i.max_price)
+      const latest = Number(i.latest_price)
+      return max > 0 ? (max - latest) / max : 0
+    }
+    const distFromMin = (i: TrackedItem) => {
+      const min = Number(i.min_price)
+      const latest = Number(i.latest_price)
+      return min > 0 ? (latest - min) / min : 999
+    }
+    switch (sort) {
+      case 'price_asc':
+        list = [...list].sort((a, b) => Number(a.latest_price) - Number(b.latest_price))
+        break
+      case 'price_desc':
+        list = [...list].sort((a, b) => Number(b.latest_price) - Number(a.latest_price))
+        break
+      case 'biggest_drop':
+        list = [...list].sort((a, b) => dropPct(b) - dropPct(a))
+        break
+      case 'near_min':
+        list = [...list].sort((a, b) => distFromMin(a) - distFromMin(b))
+        break
+      // 'recent' = leave as-is (server returns newest first)
+    }
+    return list
+  }, [items, search, sort, onlyDrops])
 
   async function submitAlert(itemId: number) {
     const target = parseInt(alertPrice.replace(/\D/g, ''), 10)
@@ -69,6 +101,32 @@ export default function DashboardClient({ items }: { items: TrackedItem[] }) {
         onChange={e => setSearch(e.target.value)}
         className="dashboard-search"
       />
+
+      <div className="dashboard-controls">
+        <select
+          className="dashboard-sort"
+          value={sort}
+          onChange={e => setSort(e.target.value as SortMode)}
+          aria-label="Ordenar por"
+        >
+          <option value="recent">Más recientes</option>
+          <option value="biggest_drop">Mayor caída de precio</option>
+          <option value="near_min">Cerca del mínimo histórico</option>
+          <option value="price_asc">Precio: menor a mayor</option>
+          <option value="price_desc">Precio: mayor a menor</option>
+        </select>
+        <label className="dashboard-toggle">
+          <input
+            type="checkbox"
+            checked={onlyDrops}
+            onChange={e => setOnlyDrops(e.target.checked)}
+          />
+          Solo con baja de precio
+        </label>
+        <span style={{ fontSize: 12, color: '#999', marginLeft: 'auto' }}>
+          {filtered.length} resultado{filtered.length === 1 ? '' : 's'}
+        </span>
+      </div>
 
       {feedback && (
         <div className={`alert-toast alert-toast-${feedback.kind}`}>{feedback.text}</div>

@@ -14,8 +14,8 @@ import { fetchMlInfo } from '@/lib/ml-fetch'
  */
 export const maxDuration = 300
 
-const TOP_N_PER_CATEGORY = 20
-const MAX_CATEGORIES_PER_RUN = 22
+const TOP_N_PER_CATEGORY = 12
+const MAX_CATEGORIES_PER_RUN = 8
 
 interface HighlightEntry {
   id: string
