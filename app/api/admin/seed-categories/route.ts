@@ -35,37 +35,27 @@ export async function GET(request: Request) {
     }
 
     const cats = (await res.json()) as MlCategory[]
-    let inserted = 0
-    let updated = 0
 
-    for (const cat of cats) {
-      // Upsert by (site_id, ml_category_id)
-      const { data: existing } = await supabaseAdmin
-        .from('tracked_categories')
-        .select('id')
-        .eq('site_id', site)
-        .eq('ml_category_id', cat.id)
-        .maybeSingle<{ id: number }>()
+    // Bulk upsert in a single query — much faster than serial calls
+    const rows = cats.map(c => ({
+      site_id: site,
+      ml_category_id: c.id,
+      name: c.name,
+      priority: 5,
+      is_active: true
+    }))
 
-      if (existing) {
-        await supabaseAdmin
-          .from('tracked_categories')
-          .update({ name: cat.name, is_active: true })
-          .eq('id', existing.id)
-        updated++
-      } else {
-        await supabaseAdmin.from('tracked_categories').insert({
-          site_id: site,
-          ml_category_id: cat.id,
-          name: cat.name,
-          priority: 5,
-          is_active: true
-        })
-        inserted++
-      }
+    const { error: upErr, count } = await supabaseAdmin
+      .from('tracked_categories')
+      .upsert(rows, { onConflict: 'site_id,ml_category_id', count: 'exact' })
+
+    if (upErr) {
+      console.error('[Seed] Upsert failed', site, upErr)
+      summary[site] = { fetched: cats.length, inserted: 0, updated: 0 }
+      continue
     }
 
-    summary[site] = { fetched: cats.length, inserted, updated }
+    summary[site] = { fetched: cats.length, inserted: count ?? rows.length, updated: 0 }
   }
 
   return NextResponse.json({
