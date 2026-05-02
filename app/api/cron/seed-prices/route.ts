@@ -85,12 +85,11 @@ export async function GET(request: Request) {
           .update({ last_seen_at: new Date().toISOString() })
           .eq('id', item.id)
 
-        // Fire any user alerts for this item
-        if (previousPrice == null || previousPrice !== price) {
-          processAlertsForItem(item.id, price, previousPrice).catch(err =>
-            console.error('[Cron] Alert processing failed for item', item.id, err)
-          )
-        }
+        // Always evaluate alerts for this item (24h cooldown prevents email spam).
+        // Newly-created alerts pick up on the next cron run even if price didn't change.
+        processAlertsForItem(item.id, price, previousPrice).catch(err =>
+          console.error('[Cron] Alert processing failed for item', item.id, err)
+        )
 
         updated++
 
