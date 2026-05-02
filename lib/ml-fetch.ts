@@ -85,6 +85,24 @@ export async function fetchMlInfo(mlId: string): Promise<NormalizedMlInfo | null
   if (prodRes.ok) {
     const data = (await prodRes.json()) as ProductResp
     const winner = data.buy_box_winner
+
+    // 2a. If buy_box_winner is null (common — ML restricts buy_box for many catalogs),
+    // fall back to /products/{id}/items to get the actual sellers' listings.
+    let price = winner?.price ?? null
+    let originalPrice = winner?.original_price ?? null
+    let currency = winner?.currency_id ?? 'ARS'
+    let sellerId = winner?.seller_id ?? null
+
+    if (price == null) {
+      const cheapest = await fetchCheapestListing(mlId)
+      if (cheapest) {
+        price = cheapest.price
+        originalPrice = cheapest.original_price
+        currency = cheapest.currency
+        sellerId = cheapest.seller_id
+      }
+    }
+
     return {
       ml_id: data.id,
       source: 'product',
@@ -92,11 +110,11 @@ export async function fetchMlInfo(mlId: string): Promise<NormalizedMlInfo | null
       thumbnail_url: data.pictures?.[0]?.url ?? null,
       permalink: data.permalink ?? null,
       category_id: data.category_id ?? null,
-      seller_id: winner?.seller_id ?? null,
+      seller_id: sellerId,
       site_id: data.site_id ?? mlId.slice(0, 3),
-      price: winner?.price ?? null,
-      original_price: winner?.original_price ?? null,
-      currency: winner?.currency_id ?? 'ARS',
+      price,
+      original_price: originalPrice,
+      currency,
       free_shipping: false,
       shipping_mode: null,
       condition: null
@@ -104,6 +122,46 @@ export async function fetchMlInfo(mlId: string): Promise<NormalizedMlInfo | null
   }
 
   return null
+}
+
+interface ProductItemListing {
+  item_id: string
+  seller_id: number
+  price: number
+  original_price: number | null
+  currency_id: string
+  condition: string
+}
+
+/**
+ * For catalog products with no buy_box_winner, query the listings under that
+ * catalog and return the cheapest "new" one. Anchors price tracking to a real
+ * sellable price even when ML hides buy_box from the API.
+ */
+async function fetchCheapestListing(catalogId: string): Promise<{
+  price: number
+  original_price: number | null
+  currency: string
+  seller_id: number
+} | null> {
+  try {
+    const res = await mlFetch(`/products/${catalogId}/items?limit=10`)
+    if (!res.ok) return null
+    const data = (await res.json()) as { results?: ProductItemListing[] }
+    const items = (data.results ?? [])
+      .filter(i => i.price && i.price > 0 && i.condition === 'new')
+      .sort((a, b) => a.price - b.price)
+    if (items.length === 0) return null
+    const cheapest = items[0]
+    return {
+      price: cheapest.price,
+      original_price: cheapest.original_price,
+      currency: cheapest.currency_id ?? 'ARS',
+      seller_id: cheapest.seller_id
+    }
+  } catch {
+    return null
+  }
 }
 
 /**
