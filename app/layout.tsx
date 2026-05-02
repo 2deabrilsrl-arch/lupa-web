@@ -1,6 +1,14 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Analytics } from '@vercel/analytics/next'
+import ServiceWorkerRegister from './sw-register'
 import './globals.css'
+
+export const viewport: Viewport = {
+  themeColor: '#3483FA',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5
+}
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://lupaprecios.com'),
@@ -37,8 +45,15 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
+      <head>
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="Lupa Precios" />
+        <meta name="mobile-web-app-capable" content="yes" />
+      </head>
       <body>
         {children}
+        <ServiceWorkerRegister />
         <Analytics />
       </body>
     </html>

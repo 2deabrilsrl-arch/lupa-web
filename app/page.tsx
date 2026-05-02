@@ -1,7 +1,12 @@
 // TODO: replace with real Chrome Web Store URL once extension is published
 const INSTALL_URL = 'https://chromewebstore.google.com/'
 
-export default function Home() {
+export default async function Home({
+  searchParams
+}: {
+  searchParams: Promise<{ lookup_error?: string }>
+}) {
+  const { lookup_error } = await searchParams
   return (
     <>
       {/* Header */}
@@ -33,6 +38,24 @@ export default function Home() {
             Instalar Lupa Precios gratis
           </a>
           <p className="hero-sub">Chrome · Gratis · Sin registro · 2 segundos</p>
+
+          <div className="lookup">
+            <p className="lookup-label">¿En el celular? Pegá el link de un producto de MercadoLibre</p>
+            <form action="/api/lookup" method="get" className="lookup-form">
+              <input
+                type="text"
+                name="url"
+                inputMode="url"
+                placeholder="https://articulo.mercadolibre.com.ar/MLA-..."
+                className="lookup-input"
+                required
+              />
+              <button type="submit" className="lookup-submit">Ver historial</button>
+            </form>
+            {lookup_error && (
+              <p className="lookup-error">No pudimos detectar un producto en ese link. Probá con un link directo a un producto.</p>
+            )}
+          </div>
         </div>
       </section>
 
