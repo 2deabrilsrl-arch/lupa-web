@@ -182,7 +182,54 @@ export default async function ProductPage({ params }: RouteContext) {
   if (!mlId) notFound()
 
   const data = await loadProduct(mlId)
-  if (!data) notFound()
+
+  // Gracefully handle items that ML restricts (e.g. Tiendas Oficiales, B2B)
+  if (!data) {
+    const fallbackUrl = `https://articulo.mercadolibre.com.ar/${mlId.startsWith('MLA') ? mlId.replace('MLA', 'MLA-') : mlId}`
+    return (
+      <>
+        <header className="site-header">
+          <div className="container site-header-inner">
+            <a href="/" className="site-brand">
+              <img src="/favicon.png" alt="" width={28} height={28} />
+              <span>Lupa Precios</span>
+            </a>
+            <nav className="site-nav">
+              <a href="/api/auth/login" className="nav-login">Iniciar sesión</a>
+            </nav>
+          </div>
+        </header>
+        <main className="pp">
+          <div className="container pp-container">
+            <div className="pp-card">
+              <h1 className="pp-title" style={{ marginBottom: 12 }}>Producto restringido</h1>
+              <p style={{ fontSize: 14, color: '#666', lineHeight: 1.6, marginBottom: 16 }}>
+                MercadoLibre no nos permite consultar la información de este producto vía API.
+                Suele pasar con productos de <strong>Tiendas Oficiales</strong> o categorías especiales.
+              </p>
+              <p style={{ fontSize: 14, color: '#666', lineHeight: 1.6, marginBottom: 20 }}>
+                <strong>Buena noticia:</strong> la extensión de Chrome sí puede trackear estos productos
+                porque lee los datos directamente desde la página mientras navegás. Instalala y abrí
+                el producto en MercadoLibre — el widget va a aparecer automáticamente.
+              </p>
+              <div className="pp-cta-row">
+                <a href={fallbackUrl} target="_blank" rel="noopener" className="pp-cta">
+                  Ver el producto en MercadoLibre
+                </a>
+                <a href="https://chromewebstore.google.com/" target="_blank" rel="noopener" className="pp-cta-secondary">
+                  Instalar la extensión
+                </a>
+              </div>
+            </div>
+            <p className="pp-disclaimer">
+              ID consultado: {mlId}. Si es un error, escribinos a{' '}
+              <a href="mailto:hola@lupaprecios.com">hola@lupaprecios.com</a>.
+            </p>
+          </div>
+        </main>
+      </>
+    )
+  }
 
   const { item, history, stats, fakeDiscount } = data
   const productUrl = item.permalink ?? `https://www.mercadolibre.com.ar/p/${mlId}`
