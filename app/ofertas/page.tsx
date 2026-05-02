@@ -53,6 +53,11 @@ const SECTION_TITLES: Record<string, { emoji: string; title: string; sub: string
     emoji: '🟢',
     title: 'En mínimo histórico',
     sub: 'Hoy están en el precio más bajo desde que los trackeamos'
+  },
+  newly_tracked: {
+    emoji: '🆕',
+    title: 'Recién agregados al catálogo',
+    sub: 'Best-sellers de MercadoLibre que estamos empezando a trackear — su historial se construye con cada cron'
   }
 }
 
