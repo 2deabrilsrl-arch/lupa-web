@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/analyze-reviews",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/discover-items",
+      "schedule": "0 2,14 * * *"
     }
   ]
 }

@@ -39,13 +39,30 @@ export async function GET(request: Request) {
       try {
         const mlData = await fetchMlInfo(item.ml_item_id)
 
+        async function evaluateWithStoredPrice() {
+          // Use the latest stored price to evaluate alerts + Deal Score.
+          // Critical for catalog products & ML-restricted items where the cron
+          // can't fetch a fresh price but stored prices already meet alert criteria.
+          const { data: latest } = await supabaseAdmin
+            .from('price_history')
+            .select('price')
+            .eq('item_id', item.id)
+            .order('captured_at', { ascending: false })
+            .limit(1)
+            .maybeSingle<{ price: number }>()
+          if (latest) {
+            await processAlertsForItem(item.id, Number(latest.price), null).catch(err =>
+              console.error('[Cron] Stored-price alert eval failed', item.id, err)
+            )
+          }
+          const result = await computeAndStoreDealScore(item.id).catch(() => null)
+          if (result) scored++
+        }
+
         if (!mlData) {
           console.log(`[Cron] ML fetch failed for ${item.ml_item_id}`)
           errors++
-          // Even when ML fetch fails, recompute Deal Score from existing data
-          // (the score still works with stored price_history + cached seller info).
-          const result = await computeAndStoreDealScore(item.id).catch(() => null)
-          if (result) scored++
+          await evaluateWithStoredPrice()
           continue
         }
 
@@ -54,9 +71,7 @@ export async function GET(request: Request) {
         const currency = mlData.currency
 
         if (!price || price === 0) {
-          // No fresh price, but still try to score from existing data
-          const result = await computeAndStoreDealScore(item.id).catch(() => null)
-          if (result) scored++
+          await evaluateWithStoredPrice()
           continue
         }
 
