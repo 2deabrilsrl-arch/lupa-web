@@ -47,7 +47,7 @@ export async function GET(request: Request) {
         const originalPrice = mlData.original_price
         const currency = mlData.currency
 
-        if (price === 0) continue
+        if (!price || price === 0) continue
 
         // Calculate discount
         let discountPercent = null
