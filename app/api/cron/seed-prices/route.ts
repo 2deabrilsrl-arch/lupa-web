@@ -31,6 +31,7 @@ export async function GET(request: Request) {
     }
 
     let updated = 0
+    let scored = 0
     let errors = 0
 
     // 2. Fetch current price for each item from ML API (authenticated, item OR catalog product)
@@ -41,6 +42,10 @@ export async function GET(request: Request) {
         if (!mlData) {
           console.log(`[Cron] ML fetch failed for ${item.ml_item_id}`)
           errors++
+          // Even when ML fetch fails, recompute Deal Score from existing data
+          // (the score still works with stored price_history + cached seller info).
+          const result = await computeAndStoreDealScore(item.id).catch(() => null)
+          if (result) scored++
           continue
         }
 
@@ -48,7 +53,12 @@ export async function GET(request: Request) {
         const originalPrice = mlData.original_price
         const currency = mlData.currency
 
-        if (!price || price === 0) continue
+        if (!price || price === 0) {
+          // No fresh price, but still try to score from existing data
+          const result = await computeAndStoreDealScore(item.id).catch(() => null)
+          if (result) scored++
+          continue
+        }
 
         // Calculate discount
         let discountPercent = null
@@ -94,10 +104,12 @@ export async function GET(request: Request) {
           console.error('[Cron] Alert processing failed for item', item.id, err)
         )
 
-        // Recompute Deal Score after each price update
-        computeAndStoreDealScore(item.id).catch(err =>
+        // Recompute Deal Score after each price update (await so we count them)
+        const score = await computeAndStoreDealScore(item.id).catch(err => {
           console.error('[Cron] Deal score failed for item', item.id, err)
-        )
+          return null
+        })
+        if (score) scored++
 
         updated++
 
@@ -114,6 +126,7 @@ export async function GET(request: Request) {
       message: 'Cron completed',
       total: items.length,
       updated,
+      scored,
       errors,
       timestamp: new Date().toISOString()
     })
