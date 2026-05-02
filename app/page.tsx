@@ -151,7 +151,11 @@ export default function Home() {
       {/* Footer */}
       <footer className="footer">
         <div className="container">
-          <p>© 2026 Lupa Precios — lupaprecios.com</p>
+          <p>
+            © 2026 Lupa Precios — lupaprecios.com ·{' '}
+            <a href="/privacidad">Privacidad</a> ·{' '}
+            <a href="/terminos">Términos</a>
+          </p>
           <p className="footer-disclaimer">
             Lupa Precios es una herramienta independiente y no está afiliada, respaldada ni patrocinada
             por MercadoLibre S.R.L. MercadoLibre es una marca registrada de MercadoLibre S.R.L.
