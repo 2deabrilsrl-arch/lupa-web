@@ -16,13 +16,19 @@ export default async function DashboardPage() {
     redirect('/api/auth/login')
   }
 
-  const { data: items } = await supabaseAdmin.rpc('get_dashboard_items', { p_limit: 50 })
+  const { data: items } = await supabaseAdmin.rpc('get_dashboard_items', { p_limit: 500 })
 
   const { count: alertsCount } = await supabaseAdmin
     .from('alerts')
     .select('*', { count: 'exact', head: true })
     .eq('user_id', user.id)
     .eq('is_active', true)
+
+  const { count: totalItems } = await supabaseAdmin
+    .from('items')
+    .select('*', { count: 'exact', head: true })
+    .eq('is_active', true)
+    .is('deleted_at', null)
 
   return (
     <>
@@ -46,7 +52,7 @@ export default async function DashboardPage() {
           <div className="dashboard-stats">
             <div className="stat-card">
               <div className="stat-label">Productos trackeados</div>
-              <div className="stat-value">{items?.length ?? 0}</div>
+              <div className="stat-value">{totalItems ?? items?.length ?? 0}</div>
             </div>
             <div className="stat-card">
               <div className="stat-label">Mis alertas activas</div>
