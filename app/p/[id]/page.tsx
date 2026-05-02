@@ -21,6 +21,17 @@ interface PriceRow {
   captured_at: string
 }
 
+interface ReviewsAnalysisRow {
+  ai_summary: string | null
+  pros: string[] | null
+  cons: string[] | null
+  sizing_notes: string | null
+  sentiment_score: number | null
+  total_reviews: number | null
+  avg_rating: number | null
+  analyzed_at: string
+}
+
 interface ProductData {
   item: ItemRow
   history: PriceRow[]
@@ -34,6 +45,7 @@ interface ProductData {
     currency: string
   } | null
   fakeDiscount: { detected: boolean; reason: string | null }
+  reviewsAnalysis: ReviewsAnalysisRow | null
 }
 
 const fmtPrice = (n: number, currency = 'ARS') =>
@@ -141,7 +153,16 @@ async function loadProduct(mlItemId: string): Promise<ProductData | null> {
     }
   }
 
-  return { item, history, stats, fakeDiscount: fake }
+  // Latest reviews analysis (if any)
+  const { data: reviewsAnalysis } = await supabaseAdmin
+    .from('reviews_analysis')
+    .select('ai_summary, pros, cons, sizing_notes, sentiment_score, total_reviews, avg_rating, analyzed_at')
+    .eq('item_id', item.id)
+    .order('analyzed_at', { ascending: false })
+    .limit(1)
+    .maybeSingle<ReviewsAnalysisRow>()
+
+  return { item, history, stats, fakeDiscount: fake, reviewsAnalysis: reviewsAnalysis ?? null }
 }
 
 interface RouteContext {
@@ -231,7 +252,7 @@ export default async function ProductPage({ params }: RouteContext) {
     )
   }
 
-  const { item, history, stats, fakeDiscount } = data
+  const { item, history, stats, fakeDiscount, reviewsAnalysis } = data
   const productUrl = item.permalink ?? `https://www.mercadolibre.com.ar/p/${mlId}`
 
   let indicator: { cls: string; text: string } | null = null
@@ -340,6 +361,64 @@ export default async function ProductPage({ params }: RouteContext) {
               </a>
             </div>
           </div>
+
+          {reviewsAnalysis && reviewsAnalysis.ai_summary && (
+            <div className="pp-card pp-reviews">
+              <div className="pp-reviews-header">
+                <h2>⭐ Resumen de opiniones</h2>
+                <div className="pp-reviews-meta">
+                  {reviewsAnalysis.total_reviews ?? 0} reseñas · Rating{' '}
+                  {Number(reviewsAnalysis.avg_rating ?? 0).toFixed(1)}/5
+                </div>
+              </div>
+              {typeof reviewsAnalysis.sentiment_score === 'number' && (
+                <div className="pp-sentiment">
+                  <div className="pp-sentiment-bar">
+                    <div
+                      className="pp-sentiment-fill"
+                      style={{ width: `${Math.round(reviewsAnalysis.sentiment_score * 100)}%` }}
+                    />
+                  </div>
+                  <div className="pp-sentiment-label">
+                    Sentimiento general:{' '}
+                    <strong>{Math.round(reviewsAnalysis.sentiment_score * 100)}%</strong>
+                  </div>
+                </div>
+              )}
+              <p className="pp-reviews-summary">{reviewsAnalysis.ai_summary}</p>
+              <div className="pp-reviews-grid">
+                {reviewsAnalysis.pros && reviewsAnalysis.pros.length > 0 && (
+                  <div className="pp-reviews-col">
+                    <div className="pp-reviews-col-title pp-good">👍 Lo bueno</div>
+                    <ul>
+                      {reviewsAnalysis.pros.map((p, i) => (
+                        <li key={i}>{p}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {reviewsAnalysis.cons && reviewsAnalysis.cons.length > 0 && (
+                  <div className="pp-reviews-col">
+                    <div className="pp-reviews-col-title pp-bad">👎 Lo no tan bueno</div>
+                    <ul>
+                      {reviewsAnalysis.cons.map((c, i) => (
+                        <li key={i}>{c}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+              {reviewsAnalysis.sizing_notes && (
+                <div className="pp-sizing">
+                  <strong>📏 Sobre el talle:</strong> {reviewsAnalysis.sizing_notes}
+                </div>
+              )}
+              <p className="pp-reviews-footer">
+                Análisis con IA · Actualizado{' '}
+                {new Date(reviewsAnalysis.analyzed_at).toLocaleDateString('es-AR')}
+              </p>
+            </div>
+          )}
 
           <p className="pp-disclaimer">
             Lupa Precios es una herramienta independiente. No estamos afiliados a MercadoLibre.
