@@ -75,15 +75,19 @@ async function ensureItemTracked(mlItemId: string): Promise<ItemRow | null> {
 
     if (error || !created) return null
 
-    await supabaseAdmin.rpc('insert_price_if_changed', {
-      p_item_id: created.id,
-      p_price: ml.price,
-      p_original_price: ml.original_price,
-      p_currency: ml.currency,
-      p_discount_percent: null,
-      p_price_type: ml.original_price ? 'promotion' : 'standard',
-      p_source: 'web_lookup'
-    })
+    // Only insert a price record if ML returned an actual price.
+    // Catalog products without active sellers come back with price=null.
+    if (ml.price && ml.price > 0) {
+      await supabaseAdmin.rpc('insert_price_if_changed', {
+        p_item_id: created.id,
+        p_price: ml.price,
+        p_original_price: ml.original_price,
+        p_currency: ml.currency,
+        p_discount_percent: null,
+        p_price_type: ml.original_price ? 'promotion' : 'standard',
+        p_source: 'web_lookup'
+      })
+    }
 
     return created
   } catch (err) {

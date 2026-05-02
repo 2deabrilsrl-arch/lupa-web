@@ -14,7 +14,8 @@ export interface NormalizedMlInfo {
   category_id: string | null
   seller_id: number | null
   site_id: string
-  price: number
+  /** null when the catalog product has no active sellers right now */
+  price: number | null
   original_price: number | null
   currency: string
 }
@@ -53,8 +54,7 @@ export async function fetchMlInfo(mlId: string): Promise<NormalizedMlInfo | null
   const itemRes = await mlFetch(`/items/${mlId}`)
   if (itemRes.ok) {
     const data = (await itemRes.json()) as ItemResp
-    const price = data.sale_price?.amount ?? data.price ?? 0
-    if (!price) return null
+    const price = data.sale_price?.amount ?? data.price ?? null
     return {
       ml_id: data.id,
       source: 'item',
@@ -75,7 +75,6 @@ export async function fetchMlInfo(mlId: string): Promise<NormalizedMlInfo | null
   if (prodRes.ok) {
     const data = (await prodRes.json()) as ProductResp
     const winner = data.buy_box_winner
-    if (!winner?.price) return null
     return {
       ml_id: data.id,
       source: 'product',
@@ -83,11 +82,11 @@ export async function fetchMlInfo(mlId: string): Promise<NormalizedMlInfo | null
       thumbnail_url: data.pictures?.[0]?.url ?? null,
       permalink: data.permalink ?? null,
       category_id: data.category_id ?? null,
-      seller_id: winner.seller_id ?? null,
+      seller_id: winner?.seller_id ?? null,
       site_id: data.site_id ?? mlId.slice(0, 3),
-      price: winner.price,
-      original_price: winner.original_price ?? null,
-      currency: winner.currency_id ?? 'ARS'
+      price: winner?.price ?? null,
+      original_price: winner?.original_price ?? null,
+      currency: winner?.currency_id ?? 'ARS'
     }
   }
 
