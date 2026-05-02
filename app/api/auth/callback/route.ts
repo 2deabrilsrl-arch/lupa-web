@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { ML_CONFIG, supabaseAdmin } from '@/lib/supabase'
 import { signSession, SESSION_COOKIE, SESSION_MAX_AGE } from '@/lib/session'
+import { sendWelcomeEmail, notifyAdminNewSignup } from '@/lib/email'
 
 const PKCE_COOKIE = 'lupa_pkce'
 
@@ -69,6 +70,14 @@ export async function GET(request: Request) {
 
     const mlUser = await meRes.json()
 
+    // Detect new vs returning user before upsert
+    const { data: existing } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('ml_user_id', mlUserId)
+      .maybeSingle()
+    const isNewUser = !existing
+
     const { data: user, error: userErr } = await supabaseAdmin
       .from('users')
       .upsert(
@@ -81,12 +90,25 @@ export async function GET(request: Request) {
         },
         { onConflict: 'ml_user_id', ignoreDuplicates: false }
       )
-      .select('id')
+      .select('id, email, ml_nickname')
       .single()
 
     if (userErr || !user) {
       console.error('[Auth] User upsert failed:', userErr)
       return NextResponse.redirect(new URL('/error?reason=user_save_failed', request.url))
+    }
+
+    // Fire-and-forget welcome flow for new users
+    if (isNewUser && user.email) {
+      sendWelcomeEmail({ to: user.email, userName: user.ml_nickname }).catch(err =>
+        console.error('[Auth] sendWelcomeEmail failed', err)
+      )
+      notifyAdminNewSignup({
+        userId: user.id,
+        email: user.email,
+        nickname: user.ml_nickname,
+        mlUserId
+      }).catch(err => console.error('[Auth] notifyAdminNewSignup failed', err))
     }
 
     const expiresAt = new Date(Date.now() + (expires_in ?? 21600) * 1000).toISOString()

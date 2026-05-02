@@ -153,6 +153,7 @@ export default function Home() {
         <div className="container">
           <p>
             © 2026 Lupa Precios — lupaprecios.com ·{' '}
+            <a href="/cambios">Novedades</a> ·{' '}
             <a href="/privacidad">Privacidad</a> ·{' '}
             <a href="/terminos">Términos</a>
           </p>
