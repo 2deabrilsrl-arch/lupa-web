@@ -1,5 +1,27 @@
+import { supabaseAdmin } from '@/lib/supabase'
+import { formatPrice, flagForSite } from '@/lib/format'
+
 // TODO: replace with real Chrome Web Store URL once extension is published
 const INSTALL_URL = 'https://chromewebstore.google.com/'
+
+export const revalidate = 600
+
+interface DealRow {
+  section: string
+  item_id: number
+  ml_item_id: string
+  title: string
+  thumbnail_url: string | null
+  permalink: string | null
+  site_id: string
+  latest_price: number
+  min_price: number
+  max_price: number
+  avg_price: number | null
+  currency: string
+  drop_pct: number
+  deal_score: number | null
+}
 
 export default async function Home({
   searchParams
@@ -7,6 +29,15 @@ export default async function Home({
   searchParams: Promise<{ lookup_error?: string }>
 }) {
   const { lookup_error } = await searchParams
+
+  // Top deals for the homepage strip — pull biggest_drops only, top 8
+  const { data: dealsRaw } = await supabaseAdmin.rpc('get_public_deals', {
+    p_site_id: 'MLA',
+    p_limit_per_section: 8
+  })
+  const homeDeals = ((dealsRaw ?? []) as DealRow[])
+    .filter(d => d.section === 'biggest_drops')
+    .slice(0, 8)
   return (
     <>
       {/* Header */}
@@ -17,6 +48,7 @@ export default async function Home({
             <span>Lupa Precios</span>
           </a>
           <nav className="site-nav">
+            <a href="/ofertas" className="nav-link-secondary">Ofertas</a>
             <a href="/api/auth/login" className="nav-login">Iniciar sesión</a>
           </nav>
         </div>
@@ -58,6 +90,53 @@ export default async function Home({
           </div>
         </div>
       </section>
+
+      {/* Live deals strip */}
+      {homeDeals.length > 0 && (
+        <section className="home-deals">
+          <div className="container">
+            <div className="home-deals-header">
+              <h2>🔥 Mejores ofertas detectadas hoy</h2>
+              <a href="/ofertas" className="home-deals-link">
+                Ver todas →
+              </a>
+            </div>
+            <div className="home-deals-grid">
+              {homeDeals.map(d => (
+                <a key={d.item_id} href={`/p/${d.ml_item_id}`} className="deal-card">
+                  {d.drop_pct >= 5 && (
+                    <span className="deal-badge badge-good">−{Math.round(d.drop_pct)}%</span>
+                  )}
+                  <div className="deal-card-img">
+                    {d.thumbnail_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={d.thumbnail_url} alt="" loading="lazy" />
+                    ) : (
+                      <div className="deal-card-img-empty" />
+                    )}
+                  </div>
+                  <div className="deal-card-body">
+                    <div className="deal-card-title">{d.title}</div>
+                    <div className="deal-card-prices">
+                      <div className="deal-card-current">
+                        {formatPrice(d.latest_price, d.currency)}
+                      </div>
+                    </div>
+                    <div className="deal-card-meta">
+                      <span>{flagForSite(d.site_id)}</span>
+                      {d.deal_score && (
+                        <span className="deal-card-score">
+                          · {Math.round(Number(d.deal_score))}/10
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Features */}
       <section className="features">
