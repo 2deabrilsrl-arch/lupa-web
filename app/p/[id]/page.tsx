@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { supabaseAdmin } from '@/lib/supabase'
 import { extractMlItemId, siteIdFromMlId } from '@/lib/ml-url'
+import { mlFetch } from '@/lib/ml-service'
 import PriceChart from './PriceChart'
 
 interface ItemRow {
@@ -46,13 +47,15 @@ async function ensureItemTracked(mlItemId: string): Promise<ItemRow | null> {
     .maybeSingle<ItemRow>()
   if (existing) return existing
 
-  // Fetch from ML public API and create row on-demand
+  // Fetch from ML API (authenticated — public access was deprecated)
   try {
-    const res = await fetch(
-      `https://api.mercadolibre.com/items/${mlItemId}?attributes=id,title,thumbnail,permalink,site_id,seller_id,price,original_price,sale_price,currency_id,category_id`,
-      { headers: { Accept: 'application/json' }, next: { revalidate: 0 } }
+    const res = await mlFetch(
+      `/items/${mlItemId}?attributes=id,title,thumbnail,permalink,site_id,seller_id,price,original_price,sale_price,currency_id,category_id`
     )
-    if (!res.ok) return null
+    if (!res.ok) {
+      console.warn('[/p] ML fetch failed', mlItemId, res.status)
+      return null
+    }
     const ml = await res.json()
 
     const { data: created, error } = await supabaseAdmin

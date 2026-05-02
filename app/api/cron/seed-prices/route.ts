@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { processAlertsForItem } from '@/lib/alerts'
+import { mlFetch } from '@/lib/ml-service'
 
 // Vercel Cron: runs every 6 hours (configured in vercel.json)
 // Updates prices of all tracked items via ML public API
@@ -31,12 +32,11 @@ export async function GET(request: Request) {
     let updated = 0
     let errors = 0
 
-    // 2. Fetch current price for each item from ML API
+    // 2. Fetch current price for each item from ML API (authenticated)
     for (const item of items) {
       try {
-        const res = await fetch(
-          `https://api.mercadolibre.com/items/${item.ml_item_id}?attributes=price,original_price,currency_id,sale_price`,
-          { headers: { 'Accept': 'application/json' } }
+        const res = await mlFetch(
+          `/items/${item.ml_item_id}?attributes=price,original_price,currency_id,sale_price`
         )
 
         if (!res.ok) {
