@@ -21,6 +21,14 @@ interface PriceRow {
   captured_at: string
 }
 
+interface DealScoreRow {
+  score: number
+  factors: Record<string, unknown>
+  is_fake_discount: boolean | null
+  fake_discount_detail: string | null
+  calculated_at: string
+}
+
 interface ReviewsAnalysisRow {
   ai_summary: string | null
   pros: string[] | null
@@ -46,6 +54,7 @@ interface ProductData {
   } | null
   fakeDiscount: { detected: boolean; reason: string | null }
   reviewsAnalysis: ReviewsAnalysisRow | null
+  dealScore: DealScoreRow | null
 }
 
 const fmtPrice = (n: number, currency = 'ARS') =>
@@ -77,6 +86,9 @@ async function ensureItemTracked(mlItemId: string): Promise<ItemRow | null> {
           category_id: ml.category_id,
           seller_id: ml.seller_id,
           site_id: ml.site_id,
+          condition: ml.condition,
+          free_shipping: ml.free_shipping,
+          shipping_mode: ml.shipping_mode,
           is_active: true,
           last_seen_at: new Date().toISOString()
         },
@@ -162,7 +174,23 @@ async function loadProduct(mlItemId: string): Promise<ProductData | null> {
     .limit(1)
     .maybeSingle<ReviewsAnalysisRow>()
 
-  return { item, history, stats, fakeDiscount: fake, reviewsAnalysis: reviewsAnalysis ?? null }
+  // Latest Deal Score (if any)
+  const { data: dealScore } = await supabaseAdmin
+    .from('deal_scores')
+    .select('score, factors, is_fake_discount, fake_discount_detail, calculated_at')
+    .eq('item_id', item.id)
+    .order('calculated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle<DealScoreRow>()
+
+  return {
+    item,
+    history,
+    stats,
+    fakeDiscount: fake,
+    reviewsAnalysis: reviewsAnalysis ?? null,
+    dealScore: dealScore ?? null
+  }
 }
 
 interface RouteContext {
@@ -252,8 +280,11 @@ export default async function ProductPage({ params }: RouteContext) {
     )
   }
 
-  const { item, history, stats, fakeDiscount, reviewsAnalysis } = data
+  const { item, history, stats, fakeDiscount, reviewsAnalysis, dealScore } = data
   const productUrl = item.permalink ?? `https://www.mercadolibre.com.ar/p/${mlId}`
+
+  const dealScoreColor = (score: number) =>
+    score >= 8 ? 'pp-deal-good' : score >= 5 ? 'pp-deal-neutral' : 'pp-deal-bad'
 
   let indicator: { cls: string; text: string } | null = null
   if (stats && history.length >= 2) {
@@ -305,6 +336,25 @@ export default async function ProductPage({ params }: RouteContext) {
                 <div>
                   <strong>Descuento sospechoso</strong>
                   <p>{fakeDiscount.reason}</p>
+                </div>
+              </div>
+            )}
+
+            {dealScore && (
+              <div className={`pp-deal ${dealScoreColor(Number(dealScore.score))}`}>
+                <div className="pp-deal-circle">
+                  <div className="pp-deal-num">{Math.round(Number(dealScore.score))}</div>
+                  <div className="pp-deal-of">/ 10</div>
+                </div>
+                <div className="pp-deal-text">
+                  <div className="pp-deal-title">Deal Score</div>
+                  <div className="pp-deal-sub">
+                    {Number(dealScore.score) >= 8
+                      ? '🟢 Excelente compra — combinación de precio, vendedor y reseñas top.'
+                      : Number(dealScore.score) >= 5
+                        ? '🟡 Razonable — chequeá las reseñas y considerá esperar una baja.'
+                        : '🔴 No es buen momento — vendedor o precio juegan en contra.'}
+                  </div>
                 </div>
               </div>
             )}

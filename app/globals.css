@@ -566,6 +566,30 @@ a:hover { text-decoration: underline; }
   line-height: 1.5;
 }
 
+/* Deal Score */
+.pp-deal {
+  display: flex; align-items: center; gap: 16px;
+  padding: 16px; border-radius: 12px;
+  margin-bottom: 16px;
+  border: 1px solid;
+}
+.pp-deal-good { background: #F0FDF4; border-color: #BBF7D0; color: #166534; }
+.pp-deal-neutral { background: #FFFBEB; border-color: #FDE68A; color: #854D0E; }
+.pp-deal-bad { background: #FEF2F2; border-color: #FECACA; color: #991B1B; }
+
+.pp-deal-circle {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; flex-shrink: 0;
+  width: 64px; height: 64px;
+  background: #fff;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+.pp-deal-num { font-size: 24px; font-weight: 800; line-height: 1; }
+.pp-deal-of { font-size: 9px; opacity: 0.7; margin-top: 2px; }
+.pp-deal-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+.pp-deal-sub { font-size: 13px; line-height: 1.45; }
+
 /* Reviews analysis */
 .pp-reviews { margin-top: 16px; }
 .pp-reviews-header {

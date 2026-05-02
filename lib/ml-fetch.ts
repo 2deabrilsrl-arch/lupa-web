@@ -18,6 +18,11 @@ export interface NormalizedMlInfo {
   price: number | null
   original_price: number | null
   currency: string
+  /** ML shipping flags — used by Deal Score */
+  free_shipping: boolean
+  shipping_mode: string | null
+  /** ML condition: new | used | not_specified */
+  condition: string | null
 }
 
 interface ItemResp {
@@ -28,10 +33,12 @@ interface ItemResp {
   site_id: string
   seller_id: number | null
   category_id: string | null
+  condition: string | null
   price: number | null
   original_price: number | null
   sale_price: { amount: number } | null
   currency_id: string | null
+  shipping: { free_shipping?: boolean; mode?: string } | null
 }
 
 interface ProductResp {
@@ -66,7 +73,10 @@ export async function fetchMlInfo(mlId: string): Promise<NormalizedMlInfo | null
       site_id: data.site_id ?? mlId.slice(0, 3),
       price,
       original_price: data.original_price ?? null,
-      currency: data.currency_id ?? 'ARS'
+      currency: data.currency_id ?? 'ARS',
+      free_shipping: data.shipping?.free_shipping ?? false,
+      shipping_mode: data.shipping?.mode ?? null,
+      condition: data.condition ?? null
     }
   }
 
@@ -86,9 +96,57 @@ export async function fetchMlInfo(mlId: string): Promise<NormalizedMlInfo | null
       site_id: data.site_id ?? mlId.slice(0, 3),
       price: winner?.price ?? null,
       original_price: winner?.original_price ?? null,
-      currency: winner?.currency_id ?? 'ARS'
+      currency: winner?.currency_id ?? 'ARS',
+      free_shipping: false,
+      shipping_mode: null,
+      condition: null
     }
   }
 
   return null
+}
+
+/**
+ * Fetch seller reputation. Returns null if not available or fetch fails.
+ * Cached at the caller level (we just call it once per item).
+ */
+export interface SellerInfo {
+  id: number
+  nickname: string | null
+  reputation_level: string | null  // e.g. "5_green", "4_light_green", null
+  power_seller_status: string | null  // "platinum" | "gold" | "silver" | null
+  transactions_completed: number | null
+  transactions_canceled: number | null
+}
+
+interface UserResp {
+  id: number
+  nickname: string | null
+  seller_reputation: {
+    level_id: string | null
+    power_seller_status: string | null
+    transactions: {
+      completed: number | null
+      canceled: number | null
+    } | null
+  } | null
+}
+
+export async function fetchSellerInfo(sellerId: number): Promise<SellerInfo | null> {
+  try {
+    const res = await mlFetch(`/users/${sellerId}`)
+    if (!res.ok) return null
+    const data = (await res.json()) as UserResp
+    const rep = data.seller_reputation
+    return {
+      id: data.id,
+      nickname: data.nickname ?? null,
+      reputation_level: rep?.level_id ?? null,
+      power_seller_status: rep?.power_seller_status ?? null,
+      transactions_completed: rep?.transactions?.completed ?? null,
+      transactions_canceled: rep?.transactions?.canceled ?? null
+    }
+  } catch {
+    return null
+  }
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { processAlertsForItem } from '@/lib/alerts'
 import { fetchMlInfo } from '@/lib/ml-fetch'
+import { computeAndStoreDealScore } from '@/lib/deal-score'
 
 // Vercel Cron: runs every 6 hours (configured in vercel.json)
 // Updates prices of all tracked items via ML public API
@@ -76,16 +77,26 @@ export async function GET(request: Request) {
           p_source: 'cron'
         })
 
-        // Update last_seen_at
+        // Update last_seen_at and refresh shipping flags
         await supabaseAdmin
           .from('items')
-          .update({ last_seen_at: new Date().toISOString() })
+          .update({
+            last_seen_at: new Date().toISOString(),
+            free_shipping: mlData.free_shipping,
+            shipping_mode: mlData.shipping_mode,
+            condition: mlData.condition,
+            seller_id: mlData.seller_id ?? undefined
+          })
           .eq('id', item.id)
 
         // Always evaluate alerts for this item (24h cooldown prevents email spam).
-        // Newly-created alerts pick up on the next cron run even if price didn't change.
         processAlertsForItem(item.id, price, previousPrice).catch(err =>
           console.error('[Cron] Alert processing failed for item', item.id, err)
+        )
+
+        // Recompute Deal Score after each price update
+        computeAndStoreDealScore(item.id).catch(err =>
+          console.error('[Cron] Deal score failed for item', item.id, err)
         )
 
         updated++
