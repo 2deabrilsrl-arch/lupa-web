@@ -24,6 +24,7 @@ interface ItemRow {
 interface UserRow {
   id: string
   email: string | null
+  notification_email: string | null
   display_name: string | null
 }
 
@@ -101,20 +102,22 @@ export async function processAlertsForItem(
 
     const { data: user } = await supabaseAdmin
       .from('users')
-      .select('id, email, display_name')
+      .select('id, email, notification_email, display_name')
       .eq('id', alert.user_id)
       .is('deleted_at', null)
       .maybeSingle<UserRow>()
 
-    if (!user?.email) {
+    // Prefer notification_email override; fall back to ML email
+    const recipient = user?.notification_email || user?.email
+    if (!recipient) {
       skipped++
       continue
     }
 
     try {
       await sendPriceAlert({
-        to: user.email,
-        userName: user.display_name,
+        to: recipient,
+        userName: user?.display_name,
         productTitle: item.title,
         productUrl,
         thumbnailUrl: item.thumbnail_url,
