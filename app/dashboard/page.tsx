@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getSessionUser } from '@/lib/session'
 import { supabaseAdmin } from '@/lib/supabase'
-import DashboardClient, { type TrackedItem } from './DashboardClient'
+import DashboardClient, { type TrackedItem, type UserAlert, type UserPrefs } from './DashboardClient'
 
 export const metadata = {
   title: 'Mi panel — Lupa Precios',
@@ -29,6 +29,59 @@ export default async function DashboardPage() {
     .select('*', { count: 'exact', head: true })
     .eq('is_active', true)
     .is('deleted_at', null)
+
+  // User's active alerts joined with item info
+  const { data: alertsRaw } = await supabaseAdmin
+    .from('alerts')
+    .select(
+      'id, target_price, alert_type, drop_percent, created_at, triggered_at, items(id, ml_item_id, title, thumbnail_url, site_id)'
+    )
+    .eq('user_id', user.id)
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+
+  const alerts: UserAlert[] = ((alertsRaw ?? []) as unknown as Array<{
+    id: number
+    target_price: number
+    alert_type: string
+    drop_percent: number | null
+    created_at: string
+    triggered_at: string | null
+    items: {
+      id: number
+      ml_item_id: string
+      title: string
+      thumbnail_url: string | null
+      site_id: string | null
+    } | null
+  }>)
+    .filter(a => a.items != null)
+    .map(a => ({
+      id: a.id,
+      target_price: Number(a.target_price),
+      alert_type: a.alert_type,
+      drop_percent: a.drop_percent,
+      created_at: a.created_at,
+      triggered_at: a.triggered_at,
+      item_id: a.items!.id,
+      ml_item_id: a.items!.ml_item_id,
+      title: a.items!.title,
+      thumbnail_url: a.items!.thumbnail_url,
+      site_id: a.items!.site_id
+    }))
+
+  // User preferences (extra fields not in session)
+  const { data: prefsRaw } = await supabaseAdmin
+    .from('users')
+    .select('notification_email, display_name')
+    .eq('id', user.id)
+    .maybeSingle<{ notification_email: string | null; display_name: string | null }>()
+
+  const prefs: UserPrefs = {
+    notification_email: prefsRaw?.notification_email ?? null,
+    display_name: prefsRaw?.display_name ?? null,
+    ml_email: user.email ?? null
+  }
 
   return (
     <>
@@ -64,7 +117,11 @@ export default async function DashboardPage() {
             </div>
           </div>
 
-          <DashboardClient items={(items as TrackedItem[]) ?? []} />
+          <DashboardClient
+            items={(items as TrackedItem[]) ?? []}
+            alerts={alerts}
+            prefs={prefs}
+          />
         </div>
       </main>
     </>

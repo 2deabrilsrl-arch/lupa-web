@@ -13,12 +13,46 @@ export interface TrackedItem {
   first_seen: string
 }
 
+export interface UserAlert {
+  id: number
+  target_price: number
+  alert_type: string
+  drop_percent: number | null
+  created_at: string
+  triggered_at: string | null
+  item_id: number
+  ml_item_id: string
+  title: string
+  thumbnail_url: string | null
+  site_id: string | null
+}
+
+export interface UserPrefs {
+  notification_email: string | null
+  display_name: string | null
+  ml_email: string | null
+}
+
 const formatPrice = (p: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(p)
 
 type SortMode = 'recent' | 'price_asc' | 'price_desc' | 'biggest_drop' | 'near_min'
 
-export default function DashboardClient({ items }: { items: TrackedItem[] }) {
+export default function DashboardClient({
+  items,
+  alerts: initialAlerts,
+  prefs: initialPrefs
+}: {
+  items: TrackedItem[]
+  alerts: UserAlert[]
+  prefs: UserPrefs
+}) {
+  const [alerts, setAlerts] = useState<UserAlert[]>(initialAlerts)
+  const [prefs, setPrefs] = useState<UserPrefs>(initialPrefs)
+  const [showSettings, setShowSettings] = useState(false)
+  const [notifEmail, setNotifEmail] = useState(initialPrefs.notification_email ?? '')
+  const [savingPrefs, setSavingPrefs] = useState(false)
+  const [prefsMsg, setPrefsMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortMode>('recent')
   const [onlyDrops, setOnlyDrops] = useState(false)
@@ -92,8 +126,134 @@ export default function DashboardClient({ items }: { items: TrackedItem[] }) {
     }
   }
 
+  async function cancelAlert(alertId: number) {
+    if (!confirm('¿Cancelar esta alerta?')) return
+    try {
+      const res = await fetch(`/api/alerts?id=${alertId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        setFeedback({ kind: 'err', text: 'No pudimos cancelar la alerta' })
+        return
+      }
+      setAlerts(prev => prev.filter(a => a.id !== alertId))
+      setFeedback({ kind: 'ok', text: 'Alerta cancelada' })
+    } catch {
+      setFeedback({ kind: 'err', text: 'Error de red' })
+    }
+  }
+
+  async function savePrefs() {
+    const value = notifEmail.trim()
+    if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+      setPrefsMsg({ kind: 'err', text: 'Ingresá un email válido o dejá vacío' })
+      return
+    }
+    setSavingPrefs(true)
+    setPrefsMsg(null)
+    try {
+      const res = await fetch('/api/me/preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notification_email: value || null })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setPrefsMsg({ kind: 'err', text: data.error || 'No pudimos guardar' })
+      } else {
+        setPrefs(p => ({ ...p, notification_email: value || null }))
+        setPrefsMsg({ kind: 'ok', text: 'Guardado. Las próximas alertas van a este email.' })
+      }
+    } catch {
+      setPrefsMsg({ kind: 'err', text: 'Error de red' })
+    } finally {
+      setSavingPrefs(false)
+    }
+  }
+
+  const effectiveEmail = prefs.notification_email || prefs.ml_email || '(sin email)'
+
   return (
     <>
+      <details className="settings-card" open={showSettings}>
+        <summary
+          onClick={e => {
+            e.preventDefault()
+            setShowSettings(s => !s)
+          }}
+        >
+          <span>⚙️ Configuración</span>
+          <span className="settings-summary-meta">
+            Email de alertas: <strong>{effectiveEmail}</strong>
+          </span>
+        </summary>
+        <div className="settings-body">
+          <label className="settings-label">
+            Email para alertas de precio
+            <input
+              type="email"
+              className="settings-input"
+              placeholder={prefs.ml_email ?? 'tu@email.com'}
+              value={notifEmail}
+              onChange={e => setNotifEmail(e.target.value)}
+            />
+          </label>
+          <p className="settings-hint">
+            Si lo dejás vacío, te avisamos al email de tu cuenta de MercadoLibre
+            ({prefs.ml_email ?? '—'}).
+          </p>
+          <button onClick={savePrefs} disabled={savingPrefs} className="settings-save">
+            {savingPrefs ? 'Guardando...' : 'Guardar'}
+          </button>
+          {prefsMsg && (
+            <p className={`settings-msg settings-msg-${prefsMsg.kind}`}>{prefsMsg.text}</p>
+          )}
+        </div>
+      </details>
+
+      {alerts.length > 0 && (
+        <section className="alerts-section">
+          <h2 className="alerts-section-title">🔔 Mis alertas activas ({alerts.length})</h2>
+          <div className="alerts-list">
+            {alerts.map(a => (
+              <div key={a.id} className="alert-row">
+                {a.thumbnail_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={a.thumbnail_url}
+                    alt=""
+                    width={40}
+                    height={40}
+                    className="alert-row-img"
+                  />
+                ) : (
+                  <div className="alert-row-img alert-row-img-empty" />
+                )}
+                <div className="alert-row-text">
+                  <a href={`/p/${a.ml_item_id}`} className="alert-row-title">
+                    {a.title}
+                  </a>
+                  <div className="alert-row-meta">
+                    Avisar cuando baje a <strong>{formatPrice(a.target_price)}</strong>
+                    {a.triggered_at && (
+                      <span className="alert-row-triggered">
+                        {' '}· Disparada el {new Date(a.triggered_at).toLocaleDateString('es-AR')}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => cancelAlert(a.id)}
+                  className="alert-row-cancel"
+                  aria-label="Cancelar alerta"
+                  title="Cancelar alerta"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <input
         type="text"
         placeholder="Buscar producto..."
