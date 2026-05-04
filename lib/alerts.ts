@@ -1,8 +1,6 @@
 import { supabaseAdmin } from './supabase'
 import { sendPriceAlert } from './email'
 
-const COOLDOWN_MS = 24 * 60 * 60 * 1000 // don't re-fire the same alert within 24h
-
 interface AlertRow {
   id: number
   user_id: string
@@ -91,13 +89,10 @@ export async function processAlertsForItem(
   let skipped = 0
 
   for (const alert of matching) {
-    // Cooldown check
+    // One-shot: if it already fired, never fire again. User can create a new alert.
     if (alert.triggered_at) {
-      const last = new Date(alert.triggered_at).getTime()
-      if (Date.now() - last < COOLDOWN_MS) {
-        skipped++
-        continue
-      }
+      skipped++
+      continue
     }
 
     const { data: user } = await supabaseAdmin
@@ -128,7 +123,11 @@ export async function processAlertsForItem(
 
       await supabaseAdmin
         .from('alerts')
-        .update({ triggered_at: new Date().toISOString(), notification_sent: true })
+        .update({
+          triggered_at: new Date().toISOString(),
+          notification_sent: true,
+          is_active: false
+        })
         .eq('id', alert.id)
 
       await supabaseAdmin.from('alert_notifications').insert({
