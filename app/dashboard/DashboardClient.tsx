@@ -1,5 +1,5 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ML_SITES, productUrlFor } from '@/lib/ml-url'
 
 export interface TrackedItem {
@@ -54,6 +54,13 @@ export default function DashboardClient({
 }) {
   const [alerts, setAlerts] = useState<UserAlert[]>(initialAlerts)
   const [prefs, setPrefs] = useState<UserPrefs>(initialPrefs)
+
+  // Persist the chosen country in a cookie so the dashboard remembers it
+  // across visits — same UX as ML's country gateway.
+  useEffect(() => {
+    document.cookie = `lupa_site=${currentSite}; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=Lax`
+  }, [currentSite])
+
   const [showSettings, setShowSettings] = useState(false)
   const [notifEmail, setNotifEmail] = useState(initialPrefs.notification_email ?? '')
   const [savingPrefs, setSavingPrefs] = useState(false)

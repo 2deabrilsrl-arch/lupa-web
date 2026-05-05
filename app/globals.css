@@ -285,6 +285,30 @@ a:hover { text-decoration: underline; }
 .stat-label { font-size: 11px; text-transform: uppercase; color: var(--gray-400); letter-spacing: 0.04em; }
 .stat-value { font-size: 24px; font-weight: 700; margin-top: 4px; }
 .plan-value { text-transform: capitalize; color: var(--blue); }
+.country-picker {
+  background: #fff; border: 1px solid var(--gray-100);
+  border-radius: 12px; padding: 40px 32px; max-width: 640px;
+  margin: 32px auto; text-align: center;
+}
+.country-picker-title { font-size: 22px; font-weight: 700; margin: 0 0 8px; }
+.country-picker-sub { color: var(--gray-400); font-size: 14px; margin: 0 0 28px; }
+.country-picker-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+.country-picker-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px; background: #fffbe6;
+  border: 1px solid #f3d853; border-radius: 8px;
+  font-size: 15px; font-weight: 500; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.05s;
+  font-family: var(--font); color: #2c2c2c;
+}
+.country-picker-item:hover { background: #fff37a; border-color: #e6c200; }
+.country-picker-item:active { transform: scale(0.98); }
+.country-picker-flag { font-size: 22px; line-height: 1; }
+.country-picker-label { flex: 1; text-align: left; }
+
 .dashboard-country-tabs {
   display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px;
 }

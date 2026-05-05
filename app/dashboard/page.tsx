@@ -1,8 +1,10 @@
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getSessionUser } from '@/lib/session'
 import { supabaseAdmin } from '@/lib/supabase'
 import { ML_SITES } from '@/lib/ml-url'
 import DashboardClient, { type TrackedItem, type UserAlert, type UserPrefs } from './DashboardClient'
+import CountryPicker from './CountryPicker'
 
 export const metadata = {
   title: 'Mi panel — Lupa Precios',
@@ -12,6 +14,7 @@ export const metadata = {
 export const dynamic = 'force-dynamic'
 
 const VALID_SITE_IDS = new Set(ML_SITES.map(s => s.id))
+const SITE_COOKIE = 'lupa_site'
 
 export default async function DashboardPage({
   searchParams
@@ -24,9 +27,44 @@ export default async function DashboardPage({
   }
 
   const { site: siteParam } = await searchParams
-  const siteId = siteParam && VALID_SITE_IDS.has(siteParam.toUpperCase())
+  const cookieStore = await cookies()
+  const cookieSite = cookieStore.get(SITE_COOKIE)?.value
+
+  // First-visit flow: no URL param, no cookie → show the country picker.
+  const explicitSite = siteParam && VALID_SITE_IDS.has(siteParam.toUpperCase())
     ? siteParam.toUpperCase()
-    : 'MLA'
+    : null
+  const rememberedSite = cookieSite && VALID_SITE_IDS.has(cookieSite.toUpperCase())
+    ? cookieSite.toUpperCase()
+    : null
+
+  if (!explicitSite && !rememberedSite) {
+    return (
+      <>
+        <header className="site-header">
+          <div className="container site-header-inner">
+            <a href="/" className="site-brand">
+              <img src="/favicon.png" alt="" width={28} height={28} />
+              <span>Lupa Precios</span>
+            </a>
+            <nav className="site-nav dashboard-nav">
+              <span className="nav-greeting">
+                Hola, <strong>{user.ml_nickname || user.display_name || 'usuario'}</strong>
+              </span>
+              <a href="/api/auth/logout" className="nav-login nav-logout">Cerrar sesión</a>
+            </nav>
+          </div>
+        </header>
+        <main className="dashboard">
+          <div className="container dashboard-container">
+            <CountryPicker />
+          </div>
+        </main>
+      </>
+    )
+  }
+
+  const siteId = explicitSite ?? rememberedSite!
 
   const { data: items } = await supabaseAdmin.rpc('get_dashboard_items', {
     p_site_id: siteId,
