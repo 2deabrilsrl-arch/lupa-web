@@ -1,11 +1,14 @@
 'use client'
 import { useMemo, useState } from 'react'
+import { ML_SITES, productUrlFor } from '@/lib/ml-url'
 
 export interface TrackedItem {
   id: number
   ml_item_id: string
   title: string
   thumbnail_url: string
+  permalink: string | null
+  site_id: string | null
   latest_price: number
   min_price: number
   max_price: number
@@ -41,11 +44,13 @@ type SortMode = 'recent' | 'price_asc' | 'price_desc' | 'biggest_drop' | 'near_m
 export default function DashboardClient({
   items,
   alerts: initialAlerts,
-  prefs: initialPrefs
+  prefs: initialPrefs,
+  currentSite
 }: {
   items: TrackedItem[]
   alerts: UserAlert[]
   prefs: UserPrefs
+  currentSite: string
 }) {
   const [alerts, setAlerts] = useState<UserAlert[]>(initialAlerts)
   const [prefs, setPrefs] = useState<UserPrefs>(initialPrefs)
@@ -254,6 +259,20 @@ export default function DashboardClient({
         </section>
       )}
 
+      <div className="dashboard-country-tabs" role="tablist" aria-label="País">
+        {ML_SITES.map(s => (
+          <a
+            key={s.id}
+            href={`/dashboard?site=${s.id}`}
+            className={`dashboard-country-tab${currentSite === s.id ? ' is-active' : ''}`}
+            role="tab"
+            aria-selected={currentSite === s.id}
+          >
+            <span aria-hidden="true">{s.flag}</span> {s.label}
+          </a>
+        ))}
+      </div>
+
       <input
         type="text"
         placeholder="Buscar producto..."
@@ -302,7 +321,7 @@ export default function DashboardClient({
       ) : (
         <div className="dashboard-list">
           {filtered.map(item => {
-            const productUrl = `https://www.mercadolibre.com.ar/p/${item.ml_item_id}`
+            const productUrl = productUrlFor(item)
             const isOpen = openAlertFor === item.id
             return (
               <div key={item.id} className="dashboard-item-wrap">

@@ -285,6 +285,21 @@ a:hover { text-decoration: underline; }
 .stat-label { font-size: 11px; text-transform: uppercase; color: var(--gray-400); letter-spacing: 0.04em; }
 .stat-value { font-size: 24px; font-weight: 700; margin-top: 4px; }
 .plan-value { text-transform: capitalize; color: var(--blue); }
+.dashboard-country-tabs {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px;
+}
+.dashboard-country-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px; font-size: 13px; font-weight: 500;
+  border: 1px solid var(--gray-200); border-radius: 999px;
+  background: #fff; color: var(--gray-600, #444); text-decoration: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.dashboard-country-tab:hover { border-color: var(--celeste, #3483FA); color: var(--celeste, #3483FA); }
+.dashboard-country-tab.is-active {
+  background: var(--celeste, #3483FA); border-color: var(--celeste, #3483FA);
+  color: #fff;
+}
 .dashboard-search {
   width: 100%; padding: 12px 16px; font-size: 15px;
   border: 1px solid var(--gray-200); border-radius: 8px;

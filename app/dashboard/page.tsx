@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getSessionUser } from '@/lib/session'
 import { supabaseAdmin } from '@/lib/supabase'
+import { ML_SITES } from '@/lib/ml-url'
 import DashboardClient, { type TrackedItem, type UserAlert, type UserPrefs } from './DashboardClient'
 
 export const metadata = {
@@ -10,13 +11,27 @@ export const metadata = {
 
 export const dynamic = 'force-dynamic'
 
-export default async function DashboardPage() {
+const VALID_SITE_IDS = new Set(ML_SITES.map(s => s.id))
+
+export default async function DashboardPage({
+  searchParams
+}: {
+  searchParams: Promise<{ site?: string }>
+}) {
   const user = await getSessionUser()
   if (!user) {
     redirect('/api/auth/login')
   }
 
-  const { data: items } = await supabaseAdmin.rpc('get_dashboard_items', { p_limit: 500 })
+  const { site: siteParam } = await searchParams
+  const siteId = siteParam && VALID_SITE_IDS.has(siteParam.toUpperCase())
+    ? siteParam.toUpperCase()
+    : 'MLA'
+
+  const { data: items } = await supabaseAdmin.rpc('get_dashboard_items', {
+    p_site_id: siteId,
+    p_limit: 500
+  })
 
   const { count: alertsCount } = await supabaseAdmin
     .from('alerts')
@@ -29,6 +44,7 @@ export default async function DashboardPage() {
     .select('*', { count: 'exact', head: true })
     .eq('is_active', true)
     .is('deleted_at', null)
+    .eq('site_id', siteId)
 
   // User's active alerts joined with item info
   const { data: alertsRaw } = await supabaseAdmin
@@ -121,6 +137,7 @@ export default async function DashboardPage() {
             items={(items as TrackedItem[]) ?? []}
             alerts={alerts}
             prefs={prefs}
+            currentSite={siteId}
           />
         </div>
       </main>
