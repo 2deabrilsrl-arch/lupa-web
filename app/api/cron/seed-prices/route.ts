@@ -18,12 +18,15 @@ export async function GET(request: Request) {
 
   try {
     // 1. Get all active tracked items
+    // Order ASC by last_seen_at so the stalest items refresh first; otherwise
+    // the same recently-updated items would re-enter the top every run and
+    // older items would starve.
     const { data: items, error } = await supabaseAdmin
       .from('items')
       .select('id, ml_item_id, site_id')
       .eq('is_active', true)
-      .order('last_seen_at', { ascending: false })
-      .limit(200) // Process 200 items per run
+      .order('last_seen_at', { ascending: true, nullsFirst: true })
+      .limit(100)
 
     if (error) throw error
     if (!items || items.length === 0) {
@@ -128,8 +131,8 @@ export async function GET(request: Request) {
 
         updated++
 
-        // Rate limit: ML allows ~30 req/min for public endpoints
-        await new Promise(r => setTimeout(r, 2500))
+        // Rate limit: ML allows ~30 req/min for public endpoints (1 req / 2s).
+        await new Promise(r => setTimeout(r, 2000))
 
       } catch (err) {
         console.error(`[Cron] Error processing ${item.ml_item_id}:`, err)
