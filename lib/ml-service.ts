@@ -48,33 +48,33 @@ export async function getServiceAccessToken(): Promise<string | null> {
   return t?.access_token ?? null
 }
 
+// Hard cap on every outbound ML call. Without this, a single hung response
+// blocks the caller forever — and that's enough to time-out the whole cron.
+const ML_FETCH_TIMEOUT_MS = 8000
+
 export async function mlFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const token = await pickFreshestToken()
   if (!token) throw new Error('[ML] No service access token available')
 
   const url = path.startsWith('http') ? path : `https://api.mercadolibre.com${path}`
 
-  let res = await fetch(url, {
+  const doFetch = (accessToken: string) => fetch(url, {
     ...init,
+    signal: init.signal ?? AbortSignal.timeout(ML_FETCH_TIMEOUT_MS),
     headers: {
       ...(init.headers ?? {}),
-      Authorization: `Bearer ${token.access_token}`,
+      Authorization: `Bearer ${accessToken}`,
       Accept: 'application/json'
     }
   })
+
+  let res = await doFetch(token.access_token)
 
   // Token may have just expired between pick and call — retry once with forced refresh.
   if (res.status === 401) {
     const newToken = await refreshTokens(token.user_id)
     if (!newToken) return res
-    res = await fetch(url, {
-      ...init,
-      headers: {
-        ...(init.headers ?? {}),
-        Authorization: `Bearer ${newToken}`,
-        Accept: 'application/json'
-      }
-    })
+    res = await doFetch(newToken)
   }
 
   return res
