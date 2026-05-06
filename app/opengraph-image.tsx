@@ -39,23 +39,26 @@ export default async function OpengraphImage() {
         </div>
         <div
           style={{
+            display: 'flex',
+            justifyContent: 'center',
+            gap: 18,
             fontSize: 76,
             fontWeight: 800,
             letterSpacing: -2,
             color: '#1A1A1A',
-            textAlign: 'center',
             lineHeight: 1.05
           }}
         >
-          Conocé el <span style={{ color: '#3483FA' }}>precio real</span>
+          <span>Conocé el</span>
+          <span style={{ color: '#3483FA' }}>precio real</span>
         </div>
         <div
           style={{
+            display: 'flex',
             fontSize: 76,
             fontWeight: 800,
             letterSpacing: -2,
             color: '#1A1A1A',
-            textAlign: 'center',
             lineHeight: 1.05,
             marginBottom: 32
           }}
@@ -64,6 +67,7 @@ export default async function OpengraphImage() {
         </div>
         <div
           style={{
+            display: 'flex',
             fontSize: 28,
             color: '#666',
             textAlign: 'center',
@@ -74,6 +78,7 @@ export default async function OpengraphImage() {
         </div>
         <div
           style={{
+            display: 'flex',
             position: 'absolute',
             bottom: 48,
             fontSize: 22,
