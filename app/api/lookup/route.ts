@@ -12,15 +12,3 @@ export async function GET(request: Request) {
   }
   return NextResponse.redirect(new URL(`/p/${id}`, request.url), { status: 303 })
 }
-
-export async function POST(request: Request) {
-  const formData = await request.formData()
-  const raw = (formData.get('url') as string) ?? ''
-  const id = extractMlItemId(raw)
-  if (!id) {
-    const back = new URL('/', request.url)
-    back.searchParams.set('lookup_error', '1')
-    return NextResponse.redirect(back, { status: 303 })
-  }
-  return NextResponse.redirect(new URL(`/p/${id}`, request.url), { status: 303 })
-}
