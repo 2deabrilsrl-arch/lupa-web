@@ -48,17 +48,38 @@ for (const [k, v] of Object.entries({ SUPABASE_URL, SERVICE_KEY, RESEND_KEY })) 
 const SEND = process.argv.includes('--send')
 
 // ---------- supabase ----------
+/**
+ * Las claves nuevas (sb_secret_...) van SÓLO en el header apikey; las viejas
+ * (JWT service_role) van en apikey y en Authorization. Mandar una clave nueva
+ * como Bearer no está soportado.
+ */
+const ES_CLAVE_NUEVA = SERVICE_KEY.startsWith('sb_')
+
 async function sb(path, init = {}) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    ...init,
-    headers: {
-      apikey: SERVICE_KEY,
-      Authorization: `Bearer ${SERVICE_KEY}`,
-      'Content-Type': 'application/json',
-      ...(init.headers ?? {})
+  const headers = {
+    apikey: SERVICE_KEY,
+    'Content-Type': 'application/json',
+    ...(init.headers ?? {})
+  }
+  if (!ES_CLAVE_NUEVA) headers.Authorization = `Bearer ${SERVICE_KEY}`
+
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { ...init, headers })
+
+  if (!res.ok) {
+    const body = await res.text()
+    if (res.status === 401 && body.includes('Legacy API keys are disabled')) {
+      throw new Error(
+        'La SUPABASE_SERVICE_ROLE_KEY de tu .env.local es una clave vieja y Supabase ' +
+        'las desactivó.\n\n' +
+        '  Copiá la clave que YA está andando en producción:\n' +
+        '  Vercel → proyecto lupa-web → Settings → Environment Variables →\n' +
+        '  SUPABASE_SERVICE_ROLE_KEY → el ojito para verla → copiala a .env.local\n\n' +
+        '  (Alternativa: Supabase → Settings → API Keys → pestaña "Publishable and\n' +
+        '  secret API keys" → copiá la secret key, arranca con sb_secret_)'
+      )
     }
-  })
-  if (!res.ok) throw new Error(`Supabase ${res.status}: ${await res.text()}`)
+    throw new Error(`Supabase ${res.status}: ${body}`)
+  }
   return res.status === 204 ? null : res.json()
 }
 
@@ -87,6 +108,7 @@ async function send(to) {
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 // ---------- main ----------
+async function main() {
 const users = await sb('users?select=id,email,notification_email&deleted_at=is.null')
 const yaEnviado = await sb(
   `email_campaigns?select=user_id&campaign=eq.${encodeURIComponent(CAMPAIGN)}`
@@ -141,3 +163,9 @@ for (const d of destinatarios) {
 }
 
 console.log(`\nListo. Enviados: ${ok} · Fallaron: ${fallaron}\n`)
+}
+
+main().catch(err => {
+  console.error(`\n${err.message}\n`)
+  process.exit(1)
+})
