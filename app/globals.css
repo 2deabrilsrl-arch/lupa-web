@@ -1029,3 +1029,106 @@ a:hover { text-decoration: underline; }
 .not-found-icon { font-size: 56px; margin-bottom: 16px; }
 .not-found h1 { font-size: 64px; font-weight: 800; line-height: 1; margin-bottom: 8px; color: var(--blue); }
 .not-found p { font-size: 18px; color: var(--gray-600); margin-bottom: 32px; }
+
+/* ---------- SEO: breadcrumb, resumen y similares ---------- */
+
+.pp-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #888;
+  margin-bottom: 14px;
+}
+.pp-breadcrumb a {
+  color: #666;
+  text-decoration: none;
+}
+.pp-breadcrumb a:hover {
+  color: #3483FA;
+  text-decoration: underline;
+}
+.pp-breadcrumb span[aria-hidden='true'] {
+  color: #ccc;
+}
+
+.pp-summary {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid #eee;
+}
+.pp-summary h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 8px;
+  color: #333;
+}
+.pp-summary p {
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: #555;
+  margin: 0;
+  max-width: 65ch;
+}
+
+.pp-similar {
+  margin-top: 20px;
+}
+.pp-similar-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.pp-similar-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  color: #333;
+}
+.pp-similar-link {
+  font-size: 13px;
+  color: #3483FA;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.pp-similar-link:hover {
+  text-decoration: underline;
+}
+
+/* ---------- Páginas de categoría ---------- */
+
+.cat-title {
+  font-size: 26px;
+  font-weight: 700;
+  margin: 0 0 10px;
+  color: #222;
+  line-height: 1.2;
+}
+.cat-intro {
+  font-size: 15px;
+  line-height: 1.65;
+  color: #555;
+  margin: 0 0 22px;
+  max-width: 68ch;
+}
+.cat-pager {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  margin-top: 28px;
+}
+.cat-pager a {
+  font-size: 14px;
+  color: #3483FA;
+  text-decoration: none;
+  padding: 8px 16px;
+  border: 1px solid #dcdcdc;
+  border-radius: 6px;
+}
+.cat-pager a:hover {
+  border-color: #3483FA;
+}

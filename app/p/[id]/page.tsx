@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { extractMlItemId } from '@/lib/ml-url'
 import { fetchMlInfo } from '@/lib/ml-fetch'
 import { mlWebUrl, formatPrice } from '@/lib/format'
+import { BASE_URL, buildPriceSummary, slugify, COUNTRY_BY_SITE } from '@/lib/seo'
 import PriceChart from './PriceChart'
 import { installUrl } from '@/lib/config'
 
@@ -14,6 +15,16 @@ interface ItemRow {
   thumbnail_url: string | null
   permalink: string | null
   site_id: string | null
+  category_name: string | null
+}
+
+interface SimilarRow {
+  ml_item_id: string
+  title: string
+  thumbnail_url: string | null
+  site_id: string
+  latest_price: number | null
+  currency: string | null
 }
 
 interface PriceRow {
@@ -58,6 +69,9 @@ interface ProductData {
   fakeDiscount: { detected: boolean; reason: string | null }
   reviewsAnalysis: ReviewsAnalysisRow | null
   dealScore: DealScoreRow | null
+  /** Resumen en prosa armado desde los datos. Único contenido propio de la ficha. */
+  summary: string | null
+  similar: SimilarRow[]
 }
 
 const fmtPrice = formatPrice
@@ -65,7 +79,7 @@ const fmtPrice = formatPrice
 async function ensureItemTracked(mlItemId: string): Promise<ItemRow | null> {
   const { data: existing } = await supabaseAdmin
     .from('items')
-    .select('id, ml_item_id, title, thumbnail_url, permalink, site_id')
+    .select('id, ml_item_id, title, thumbnail_url, permalink, site_id, category_name')
     .eq('ml_item_id', mlItemId)
     .maybeSingle<ItemRow>()
   if (existing) return existing
@@ -96,7 +110,7 @@ async function ensureItemTracked(mlItemId: string): Promise<ItemRow | null> {
         },
         { onConflict: 'ml_item_id' }
       )
-      .select('id, ml_item_id, title, thumbnail_url, permalink, site_id')
+      .select('id, ml_item_id, title, thumbnail_url, permalink, site_id, category_name')
       .single<ItemRow>()
 
     if (error || !created) return null
@@ -197,13 +211,39 @@ async function loadProduct(mlItemId: string): Promise<ProductData | null> {
     .limit(1)
     .maybeSingle<DealScoreRow>()
 
+  // Resumen en prosa desde los propios datos. Es lo único de la ficha que no
+  // es una repetición de lo que ya dice MercadoLibre.
+  const summary = stats
+    ? buildPriceSummary(
+        item.title,
+        history.map(h => ({ price: Number(h.price), captured_at: h.captured_at })),
+        stats.currency
+      )
+    : null
+
+  // Enlazado interno: sin esto cada ficha es una isla y Google entra pero no
+  // tiene a dónde seguir.
+  let similar: SimilarRow[] = []
+  if (item.category_name) {
+    const { data: sim } = await supabaseAdmin.rpc('get_category_items', {
+      p_category_name: item.category_name,
+      p_site_id: item.site_id,
+      p_limit: 6,
+      p_offset: 0,
+      p_exclude_ml_item_id: item.ml_item_id
+    })
+    similar = (sim as SimilarRow[] | null) ?? []
+  }
+
   return {
     item,
     history,
     stats,
     fakeDiscount: fake,
     reviewsAnalysis: reviewsAnalysis ?? null,
-    dealScore: dealScore ?? null
+    dealScore: dealScore ?? null,
+    summary,
+    similar
   }
 }
 
@@ -218,22 +258,38 @@ export async function generateMetadata({ params }: RouteContext): Promise<Metada
 
   const { data: item } = await supabaseAdmin
     .from('items')
-    .select('title, thumbnail_url')
+    .select('id, title, thumbnail_url')
     .eq('ml_item_id', mlId)
-    .maybeSingle<{ title: string; thumbnail_url: string | null }>()
+    .maybeSingle<{ id: number; title: string; thumbnail_url: string | null }>()
 
   const title = item?.title
     ? `${item.title.slice(0, 70)} — Historial de precios | Lupa Precios`
     : 'Historial de precios — Lupa Precios'
 
+  // Una ficha con menos de 2 registros no tiene historial que mostrar. La
+  // dejamos fuera del índice (pero follow, para que Google siga los links)
+  // hasta que el cron le junte datos.
+  let points = 0
+  if (item?.id) {
+    const { count } = await supabaseAdmin
+      .from('price_history')
+      .select('id', { count: 'exact', head: true })
+      .eq('item_id', item.id)
+    points = count ?? 0
+  }
+  const indexable = points >= 2
+
   return {
     title,
     description: item?.title
-      ? `Mirá el historial real de precios de "${item.title.slice(0, 100)}" en MercadoLibre. Detectá descuentos falsos.`
+      ? `Evolución del precio de "${item.title.slice(0, 90)}" en MercadoLibre: mínimo, máximo y promedio de los últimos 90 días. Descubrí si el descuento es real antes de comprar.`
       : 'Historial de precios para productos de MercadoLibre.',
-    alternates: { canonical: `https://lupaprecios.com/p/${mlId}` },
+    alternates: { canonical: `${BASE_URL}/p/${mlId}` },
+    robots: indexable ? { index: true, follow: true } : { index: false, follow: true },
     openGraph: {
       title,
+      type: 'website',
+      url: `${BASE_URL}/p/${mlId}`,
       images: item?.thumbnail_url ? [{ url: item.thumbnail_url }] : undefined
     }
   }
@@ -294,7 +350,7 @@ export default async function ProductPage({ params }: RouteContext) {
     )
   }
 
-  const { item, history, stats, fakeDiscount, reviewsAnalysis, dealScore } = data
+  const { item, history, stats, fakeDiscount, reviewsAnalysis, dealScore, summary, similar } = data
   // permalink can be "" for catalog products — treat empty as missing
   const validPermalink = item.permalink && item.permalink.trim().length > 0
   const productUrl = validPermalink ? item.permalink! : mlWebUrl(mlId, item.site_id)
@@ -315,8 +371,63 @@ export default async function ProductPage({ params }: RouteContext) {
     }
   }
 
+  const countryName = COUNTRY_BY_SITE[item.site_id ?? 'MLA'] ?? 'MercadoLibre'
+  const categorySlug = item.category_name ? slugify(item.category_name) : null
+
+  // Datos estructurados: es lo que habilita el precio en el resultado de Google.
+  const breadcrumbItems: Array<{ name: string; url: string }> = [
+    { name: 'Inicio', url: BASE_URL },
+    { name: 'Ofertas', url: `${BASE_URL}/ofertas` }
+  ]
+  if (item.category_name && categorySlug) {
+    breadcrumbItems.push({
+      name: item.category_name,
+      url: `${BASE_URL}/categoria/${categorySlug}`
+    })
+  }
+  breadcrumbItems.push({ name: item.title, url: `${BASE_URL}/p/${item.ml_item_id}` })
+
+  const jsonLd = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Product',
+      name: item.title,
+      image: item.thumbnail_url ? [item.thumbnail_url] : undefined,
+      description: summary ?? `Historial de precios de ${item.title} en MercadoLibre ${countryName}.`,
+      category: item.category_name ?? undefined,
+      ...(stats
+        ? {
+            offers: {
+              '@type': 'AggregateOffer',
+              priceCurrency: stats.currency,
+              lowPrice: stats.min,
+              highPrice: stats.max,
+              price: stats.latest,
+              offerCount: stats.count,
+              availability: 'https://schema.org/InStock',
+              url: productUrl
+            }
+          }
+        : {})
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'BreadcrumbList',
+      itemListElement: breadcrumbItems.map((b, i) => ({
+        '@type': 'ListItem',
+        position: i + 1,
+        name: b.name,
+        item: b.url
+      }))
+    }
+  ]
+
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <header className="site-header">
         <div className="container site-header-inner">
           <a href="/" className="site-brand">
@@ -324,6 +435,7 @@ export default async function ProductPage({ params }: RouteContext) {
             <span>Lupa Precios</span>
           </a>
           <nav className="site-nav">
+            <a href="/ofertas" className="nav-link-secondary">Ofertas</a>
             <a href="/api/auth/login" className="nav-login">Iniciar sesión</a>
           </nav>
         </div>
@@ -331,6 +443,18 @@ export default async function ProductPage({ params }: RouteContext) {
 
       <main className="pp">
         <div className="container pp-container">
+          <nav className="pp-breadcrumb" aria-label="Ruta de navegación">
+            <a href="/">Inicio</a>
+            <span aria-hidden="true">›</span>
+            <a href="/ofertas">Ofertas</a>
+            {item.category_name && categorySlug && (
+              <>
+                <span aria-hidden="true">›</span>
+                <a href={`/categoria/${categorySlug}`}>{item.category_name}</a>
+              </>
+            )}
+          </nav>
+
           <div className="pp-card">
             <div className="pp-product">
               {item.thumbnail_url ? (
@@ -407,6 +531,13 @@ export default async function ProductPage({ params }: RouteContext) {
                   Basado en {stats.count} {stats.count === 1 ? 'registro' : 'registros'} de los
                   últimos 90 días. Última actualización: {new Date(stats.latestAt).toLocaleString('es-AR')}.
                 </p>
+
+                {summary && (
+                  <section className="pp-summary">
+                    <h2>Evolución del precio</h2>
+                    <p>{summary}</p>
+                  </section>
+                )}
               </>
             ) : (
               <div className="pp-empty">
@@ -485,6 +616,45 @@ export default async function ProductPage({ params }: RouteContext) {
                 {new Date(reviewsAnalysis.analyzed_at).toLocaleDateString('es-AR')}
               </p>
             </div>
+          )}
+
+          {similar.length > 0 && (
+            <section className="pp-card pp-similar">
+              <div className="pp-similar-header">
+                <h2>
+                  Más productos de {item.category_name} en {countryName}
+                </h2>
+                {categorySlug && (
+                  <a href={`/categoria/${categorySlug}`} className="pp-similar-link">
+                    Ver toda la categoría →
+                  </a>
+                )}
+              </div>
+              <div className="home-deals-grid">
+                {similar.map(sp => (
+                  <a key={sp.ml_item_id} href={`/p/${sp.ml_item_id}`} className="deal-card">
+                    <div className="deal-card-img">
+                      {sp.thumbnail_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={sp.thumbnail_url} alt="" loading="lazy" />
+                      ) : (
+                        <div className="deal-card-img-empty" />
+                      )}
+                    </div>
+                    <div className="deal-card-body">
+                      <div className="deal-card-title">{sp.title}</div>
+                      {sp.latest_price != null && (
+                        <div className="deal-card-prices">
+                          <div className="deal-card-current">
+                            {formatPrice(Number(sp.latest_price), sp.currency ?? 'ARS')}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </section>
           )}
 
           <p className="pp-disclaimer">

@@ -170,6 +170,7 @@ export async function GET(request: Request) {
           .update({
             last_seen_at: new Date().toISOString(),
             fetch_failures: 0,
+            category_id: mlData.category_id ?? undefined,
             free_shipping: mlData.free_shipping,
             shipping_mode: mlData.shipping_mode,
             condition: mlData.condition,

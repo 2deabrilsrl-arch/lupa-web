@@ -39,7 +39,10 @@ export const metadata: Metadata = {
     images: ['/logo.png']
   },
   robots: { index: true, follow: true },
-  alternates: { canonical: 'https://lupaprecios.com' }
+  alternates: { canonical: 'https://lupaprecios.com' },
+  verification: process.env.GOOGLE_SITE_VERIFICATION
+    ? { google: process.env.GOOGLE_SITE_VERIFICATION }
+    : undefined
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
