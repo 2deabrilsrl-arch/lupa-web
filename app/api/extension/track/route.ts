@@ -105,6 +105,13 @@ export async function POST(request: Request) {
 
   const itemPatch: Record<string, unknown> = {
     ml_item_id: payload.ml_item_id,
+    // OJO: title va SIEMPRE. El upsert de PostgREST es INSERT ... ON CONFLICT
+    // DO UPDATE, así que la fila candidata tiene que pasar el NOT NULL de
+    // title aunque el conflicto termine resolviéndose por UPDATE. Omitirlo
+    // hacía fallar el endpoint con 23502 y se perdía el precio.
+    title: keepStoredTitle
+      ? (existing!.title as string)
+      : incomingTitle || existing?.title || '(sin título)',
     thumbnail_url: payload.thumbnail_url ?? null,
     permalink: payload.permalink ?? null,
     category_id: payload.category_id ?? null,
@@ -117,10 +124,6 @@ export async function POST(request: Request) {
     fetch_failures: 0,
     is_active: true
   }
-  if (!keepStoredTitle) {
-    itemPatch.title = incomingTitle || existing?.title || '(sin título)'
-  }
-
   const { data: item, error: itemErr } = await supabaseAdmin
     .from('items')
     .upsert(itemPatch, { onConflict: 'ml_item_id' })
