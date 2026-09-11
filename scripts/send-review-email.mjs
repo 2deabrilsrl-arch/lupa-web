@@ -84,15 +84,79 @@ async function sb(path, init = {}) {
 }
 
 // ---------- resend ----------
-async function send(to) {
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
+const FROM = 'Lupa Precios <hola@lupaprecios.com>'
+const FROM_DOMAIN = 'lupaprecios.com'
+
+/**
+ * Leer SIEMPRE como texto y recién después intentar parsear. Si se hace
+ * res.json() de una respuesta vacía (un 401 sin cuerpo, por ejemplo), explota
+ * con "Unexpected end of JSON input" y el status real nunca se ve.
+ */
+async function resend(path, init = {}) {
+  const res = await fetch(`https://api.resend.com${path}`, {
+    ...init,
     headers: {
       Authorization: `Bearer ${RESEND_KEY}`,
-      'Content-Type': 'application/json'
-    },
+      'Content-Type': 'application/json',
+      ...(init.headers ?? {})
+    }
+  })
+  const raw = await res.text()
+  let body = null
+  try {
+    body = raw ? JSON.parse(raw) : null
+  } catch {
+    /* no era JSON */
+  }
+  if (!res.ok) {
+    const detalle = body ? JSON.stringify(body) : raw ? raw.slice(0, 300) : '(respuesta vacía)'
+    throw new Error(`Resend HTTP ${res.status} — ${detalle}`)
+  }
+  return body
+}
+
+/** Antes de mandar nada: ¿la clave sirve y el dominio está verificado? */
+async function preflight() {
+  let dominios
+  try {
+    dominios = await resend('/domains')
+  } catch (err) {
+    throw new Error(
+      `La RESEND_API_KEY de .env.local no funciona.\n\n  ${err.message}\n\n` +
+      '  Igual que con Supabase, puede haber quedado vieja. Copiá la que está\n' +
+      '  andando en producción: Vercel → lupa-web → Settings → Environment\n' +
+      '  Variables → RESEND_API_KEY → el ojito → pegala en .env.local\n' +
+      '  (o generá una nueva en resend.com/api-keys).'
+    )
+  }
+
+  const lista = dominios?.data ?? []
+  console.log('Dominios en Resend:')
+  for (const d of lista) {
+    console.log(`  ${d.name} — ${d.status}`)
+  }
+
+  const propio = lista.find(d => d.name === FROM_DOMAIN)
+  if (!propio) {
+    throw new Error(
+      `El dominio ${FROM_DOMAIN} no figura en esta cuenta de Resend, así que no se\n` +
+      `  puede mandar desde ${FROM}. Verificalo en resend.com/domains.`
+    )
+  }
+  if (propio.status !== 'verified') {
+    throw new Error(
+      `El dominio ${FROM_DOMAIN} está en estado "${propio.status}", no "verified".\n` +
+      '  Hasta que no esté verificado Resend rechaza los envíos.'
+    )
+  }
+  console.log('')
+}
+
+async function send(to) {
+  const body = await resend('/emails', {
+    method: 'POST',
     body: JSON.stringify({
-      from: 'Lupa Precios <hola@lupaprecios.com>',
+      from: FROM,
       to,
       reply_to: 'hola@lupaprecios.com',
       subject: SUBJECT,
@@ -100,9 +164,7 @@ async function send(to) {
       text: text()
     })
   })
-  const body = await res.json()
-  if (!res.ok) throw new Error(`Resend ${res.status}: ${JSON.stringify(body)}`)
-  return body.id
+  return body?.id
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
@@ -135,7 +197,10 @@ if (!SEND) {
   process.exit(0)
 }
 
-console.log('\nEnviando...\n')
+console.log('')
+await preflight()
+
+console.log('Enviando...\n')
 let ok = 0
 let fallaron = 0
 
@@ -157,6 +222,12 @@ for (const d of destinatarios) {
   } catch (err) {
     fallaron++
     console.error(`  ✗ ${d.email} — ${err.message}`)
+    // Si el primero falla, falla todo: cortamos en vez de repetir 24 veces
+    // el mismo error y ensuciar la salida.
+    if (ok === 0) {
+      console.error('\n  Corto acá: el primer envío falló, no tiene sentido seguir.')
+      break
+    }
   }
   // Resend limita a ~2 por segundo.
   await sleep(700)
