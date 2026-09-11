@@ -80,7 +80,16 @@ async function sb(path, init = {}) {
     }
     throw new Error(`Supabase ${res.status}: ${body}`)
   }
-  return res.status === 204 ? null : res.json()
+  // Mismo cuidado que con Resend: un POST sin Prefer: return=representation
+  // devuelve 201 con el cuerpo VACÍO, y hacerle .json() explota con
+  // "Unexpected end of JSON input" — justo después de haber guardado bien.
+  const raw = await res.text()
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
 }
 
 // ---------- resend ----------
