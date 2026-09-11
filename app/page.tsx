@@ -1,8 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { formatPrice, flagForSite } from '@/lib/format'
+import { installUrl } from '@/lib/config'
 
-// TODO: replace with real Chrome Web Store URL once extension is published
-const INSTALL_URL = 'https://chromewebstore.google.com/'
 
 export const revalidate = 600
 
@@ -65,7 +64,7 @@ export default async function Home({
             Historial de precios, detector de descuentos falsos y análisis inteligente de opiniones.
             Dejá de pagar de más.
           </p>
-          <a href={INSTALL_URL} target="_blank" rel="noopener" className="hero-cta">
+          <a href={installUrl('home_hero')} target="_blank" rel="noopener" className="hero-cta">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             Instalar Lupa Precios gratis
           </a>
@@ -244,7 +243,7 @@ export default async function Home({
         <div className="container">
           <h2>Dejá de pagar de más</h2>
           <p>Más de 1.000 productos ya están siendo trackeados. Sumate.</p>
-          <a href={INSTALL_URL} target="_blank" rel="noopener" className="hero-cta">
+          <a href={installUrl('home_cta')} target="_blank" rel="noopener" className="hero-cta">
             Instalar Lupa Precios gratis
           </a>
         </div>

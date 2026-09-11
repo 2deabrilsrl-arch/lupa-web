@@ -5,6 +5,7 @@ import { extractMlItemId } from '@/lib/ml-url'
 import { fetchMlInfo } from '@/lib/ml-fetch'
 import { mlWebUrl } from '@/lib/format'
 import PriceChart from './PriceChart'
+import { installUrl } from '@/lib/config'
 
 interface ItemRow {
   id: number
@@ -267,7 +268,7 @@ export default async function ProductPage({ params }: RouteContext) {
                 <a href={fallbackUrl} target="_blank" rel="noopener" className="pp-cta">
                   Ver el producto en MercadoLibre
                 </a>
-                <a href="https://chromewebstore.google.com/" target="_blank" rel="noopener" className="pp-cta-secondary">
+                <a href={installUrl('producto_restringido')} target="_blank" rel="noopener" className="pp-cta-secondary">
                   Instalar la extensión
                 </a>
               </div>
@@ -411,7 +412,7 @@ export default async function ProductPage({ params }: RouteContext) {
               <a href={productUrl} target="_blank" rel="noopener" className="pp-cta">
                 Ir al producto en MercadoLibre
               </a>
-              <a href="https://chromewebstore.google.com/" target="_blank" rel="noopener" className="pp-cta-secondary">
+              <a href={installUrl('producto')} target="_blank" rel="noopener" className="pp-cta-secondary">
                 Instalar la extensión
               </a>
             </div>
