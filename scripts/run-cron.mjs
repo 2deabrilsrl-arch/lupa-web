@@ -32,5 +32,19 @@ const seg = Math.round((Date.now() - arranque) / 1000)
 
 console.log(`HTTP ${r.status} en ${seg}s\n`)
 console.log(r.body ? JSON.stringify(r.body, null, 2) : r.raw.slice(0, 1000))
+
+if (r.status === 401) {
+  // Huella del secreto local: alcanza para compararlo con el de Vercel sin
+  // tener que pegarlo en ningún lado.
+  const sec = env.CRON_SECRET
+  const huella = `${sec.length} caracteres · empieza "${sec.slice(0, 4)}" · termina "${sec.slice(-4)}"`
+  console.log('\n  El cron rechazó el secreto. El CRON_SECRET de tu .env.local')
+  console.log('  no coincide con el que tiene Vercel en producción.')
+  console.log(`\n  El tuyo local: ${huella}`)
+  console.log('\n  Comparalo en: Vercel → lupa-web → Settings → Environment')
+  console.log('  Variables → CRON_SECRET → el ojito. Si no coincide, copiá el')
+  console.log('  de Vercel a tu .env.local.')
+}
+
 console.log('')
 process.exit(r.ok ? 0 : 1)
