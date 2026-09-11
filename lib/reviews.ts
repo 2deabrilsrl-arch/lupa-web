@@ -2,7 +2,9 @@ import Anthropic from '@anthropic-ai/sdk'
 import { supabaseAdmin } from './supabase'
 import { mlFetch } from './ml-service'
 
-const MODEL = 'claude-opus-4-7'
+// Configurable por entorno: para resumir reseñas, Sonnet alcanza y sale
+// bastante más barato que Opus.
+const MODEL = process.env.REVIEWS_MODEL || 'claude-opus-4-7'
 const MIN_REVIEWS_TO_ANALYZE = 5
 const MAX_REVIEWS_PER_ANALYSIS = 50
 const REANALYSIS_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
@@ -68,26 +70,28 @@ const ANALYSIS_SCHEMA = {
       type: 'string',
       description: 'Resumen de 2-3 oraciones en español rioplatense'
     },
+    // OJO: nada de maxItems acá. output_config.format.schema lo rechaza con
+    // 400 ("For 'array' type, property 'maxItems' is not supported"), y ese
+    // único detalle hacía fallar TODAS las llamadas. El límite de 5 va en el
+    // prompt y además se recorta abajo al parsear.
     pros: {
       type: 'array',
       items: { type: 'string' },
-      maxItems: 5,
       description: 'Hasta 5 puntos positivos, frases cortas <60 chars'
     },
     cons: {
       type: 'array',
       items: { type: 'string' },
-      maxItems: 5,
       description: 'Hasta 5 puntos negativos, frases cortas <60 chars'
     },
     sizing_notes: {
       type: ['string', 'null'],
       description: 'Notas de talle si aplica (ej: "Vienen más chicos, pedí uno más"). null si no es ropa/calzado o no se menciona.'
     },
+    // Mismo motivo: minimum y maximum tampoco están soportados. El rango se
+    // fuerza abajo con un clamp.
     sentiment_score: {
       type: 'number',
-      minimum: 0,
-      maximum: 1,
       description: '0 = terribles, 0.5 = mezclado, 1 = excelentes'
     }
   },
@@ -109,15 +113,51 @@ interface MlReviewsResponse {
   reviews?: MlReview[]
 }
 
+interface ProductListing {
+  item_id: string
+}
+
+/**
+ * /reviews/item/{id} acepta IDs de publicación y los /up/, pero devuelve 404
+ * para los IDs de catálogo — que son más de la mitad del catálogo nuestro.
+ * Para esos hay que pedir una publicación real del producto y consultar las
+ * reseñas de esa.
+ */
+async function fetchReviewsFor(mlId: string, limit: number): Promise<MlReview[] | null> {
+  const res = await mlFetch(`/reviews/item/${mlId}?limit=${limit}`)
+  if (res.status === 404) return null
+  if (!res.ok) {
+    console.warn('[Reviews] Fetch failed', mlId, res.status)
+    return []
+  }
+  const data = (await res.json()) as MlReviewsResponse
+  return data.reviews ?? []
+}
+
+async function firstListingOfCatalogProduct(catalogId: string): Promise<string | null> {
+  try {
+    const res = await mlFetch(`/products/${catalogId}/items?limit=5`)
+    if (!res.ok) return null
+    const data = (await res.json()) as { results?: ProductListing[] }
+    return data.results?.[0]?.item_id ?? null
+  } catch {
+    return null
+  }
+}
+
 export async function fetchMlReviews(mlItemId: string, limit = MAX_REVIEWS_PER_ANALYSIS): Promise<MlReview[]> {
   try {
-    const res = await mlFetch(`/reviews/item/${mlItemId}?limit=${limit}`)
-    if (!res.ok) {
-      console.warn('[Reviews] Fetch failed', mlItemId, res.status)
+    const directo = await fetchReviewsFor(mlItemId, limit)
+    if (directo !== null) return directo
+
+    // 404: puede ser un ID de catálogo. Buscamos una publicación real.
+    const listingId = await firstListingOfCatalogProduct(mlItemId)
+    if (!listingId) {
+      console.log('[Reviews] 404 y sin publicación asociada', mlItemId)
       return []
     }
-    const data = (await res.json()) as MlReviewsResponse
-    return data.reviews ?? []
+    const porCatalogo = await fetchReviewsFor(listingId, limit)
+    return porCatalogo ?? []
   } catch (err) {
     console.error('[Reviews] Fetch error', mlItemId, err)
     return []
@@ -197,12 +237,14 @@ ${reviewsText}`
       sizing_notes: string | null
       sentiment_score: number
     }
+    // Los límites que el schema no puede expresar se aplican acá.
+    const clamp = (n: number) => Math.max(0, Math.min(1, Number.isFinite(n) ? n : 0.5))
     return {
       ai_summary: parsed.ai_summary,
-      pros: parsed.pros ?? [],
-      cons: parsed.cons ?? [],
+      pros: (parsed.pros ?? []).slice(0, 5),
+      cons: (parsed.cons ?? []).slice(0, 5),
       sizing_notes: parsed.sizing_notes ?? null,
-      sentiment_score: parsed.sentiment_score,
+      sentiment_score: clamp(Number(parsed.sentiment_score)),
       total_reviews: totalReviews,
       avg_rating: Number(avgRating.toFixed(2))
     }
@@ -260,39 +302,68 @@ export async function analyzeAndStoreReviews(
   return { ok: true, message: `Analyzed ${analysis.total_reviews} reseñas` }
 }
 
+/** El cron tiene 300s. Cortamos antes para poder responder con el resumen. */
+const BATCH_TIME_BUDGET_MS = 240_000
+
 export async function processReviewsBatch(): Promise<{
   total: number
   analyzed: number
   skipped: number
   errors: number
+  timedOut: boolean
 }> {
+  const arranque = Date.now()
+
+  // Antes se agarraban los 30 vistos más recientemente y no se registraba la
+  // revisión, así que al día siguiente volvía sobre los mismos 30 y el resto
+  // del catálogo no se miraba nunca. Ahora la cola rota por reviews_checked_at.
+  const cutoff = new Date(Date.now() - REANALYSIS_INTERVAL_MS).toISOString()
+
   const { data: items, error } = await supabaseAdmin
     .from('items')
     .select('id, ml_item_id, title')
     .eq('is_active', true)
     .is('deleted_at', null)
-    .order('last_seen_at', { ascending: false })
-    .limit(30)
+    .or(`reviews_checked_at.is.null,reviews_checked_at.lt.${cutoff}`)
+    .order('reviews_checked_at', { ascending: true, nullsFirst: true })
+    .limit(60)
 
   if (error || !items || items.length === 0) {
-    return { total: 0, analyzed: 0, skipped: 0, errors: 0 }
+    return { total: 0, analyzed: 0, skipped: 0, errors: 0, timedOut: false }
   }
 
   let analyzed = 0
   let skipped = 0
   let errors = 0
+  let procesados = 0
+  let timedOut = false
 
   for (const item of items) {
+    if (Date.now() - arranque > BATCH_TIME_BUDGET_MS) {
+      timedOut = true
+      break
+    }
+    procesados++
+
     try {
       const result = await analyzeAndStoreReviews(item.id, item.ml_item_id, item.title)
       if (result.ok) analyzed++
       else skipped++
-      await new Promise(r => setTimeout(r, 1500))
     } catch (err) {
-      console.error('[Reviews] Batch error', item.id, err)
+      console.error('[Reviews] Batch error', item.ml_item_id, err)
       errors++
     }
+
+    // Se marca SIEMPRE, con o sin reseñas. Si no, los productos sin reseñas
+    // vuelven a encabezar la cola para siempre — el mismo error que tenía el
+    // cron de precios.
+    await supabaseAdmin
+      .from('items')
+      .update({ reviews_checked_at: new Date().toISOString() })
+      .eq('id', item.id)
+
+    await new Promise(r => setTimeout(r, 800))
   }
 
-  return { total: items.length, analyzed, skipped, errors }
+  return { total: procesados, analyzed, skipped, errors, timedOut }
 }
