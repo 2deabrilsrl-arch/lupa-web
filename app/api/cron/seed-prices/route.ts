@@ -4,48 +4,101 @@ import { processAlertsForItem } from '@/lib/alerts'
 import { fetchMlInfo } from '@/lib/ml-fetch'
 import { computeAndStoreDealScore } from '@/lib/deal-score'
 
-// Vercel Cron: runs every 6 hours (configured in vercel.json)
-// Updates prices of all tracked items via ML public API
+// Vercel Cron: corre cada 6 horas (configurado en vercel.json)
+// Actualiza los precios de los items trackeados vía la API de ML.
 
-export const maxDuration = 300 // 5 min max for Pro plan
+export const maxDuration = 300 // 5 min, tope del plan Pro
+
+/**
+ * IDs que la API pública de ML NO resuelve: las páginas "user product" (/up/),
+ * cuyo ID tiene una U extra después del prefijo de sitio (MLAU..., MLUU...).
+ * Ni /items/{id} ni /products/{id} los aceptan, así que fetchMlInfo siempre
+ * devuelve null. Antes copaban la cola entera del cron.
+ */
+const UNRESOLVABLE_ID_RE = /^(MLA|MLB|MLM|MLC|MCO|MLU|MPE|MEC|MPY|MBO|MRD)U\d+$/i
+
+/** Fallos consecutivos tras los cuales damos el item de baja. */
+const MAX_FETCH_FAILURES = 5
+
+const BATCH_SIZE = 150
+const SLEEP_MS = 1200
+
+interface CronItem {
+  id: number
+  ml_item_id: string
+  site_id: string | null
+  fetch_failures: number | null
+}
 
 export async function GET(request: Request) {
-  // Verify cron secret (Vercel sends this header)
+  // Verificar el secreto del cron (Vercel manda este header)
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    // 1. Get all active tracked items
-    // Order ASC by last_seen_at so the stalest items refresh first; otherwise
-    // the same recently-updated items would re-enter the top every run and
-    // older items would starve.
-    const { data: items, error } = await supabaseAdmin
+    // 1. Traer los items activos más desactualizados primero.
+    //    Pedimos de más porque después filtramos los IDs irresolubles en memoria
+    //    (PostgREST no expone un NOT ~ regex cómodo sobre este patrón).
+    const { data: raw, error } = await supabaseAdmin
       .from('items')
-      .select('id, ml_item_id, site_id')
+      .select('id, ml_item_id, site_id, fetch_failures')
       .eq('is_active', true)
+      .is('deleted_at', null)
       .order('last_seen_at', { ascending: true, nullsFirst: true })
-      .limit(100)
+      .limit(BATCH_SIZE * 3)
+      .returns<CronItem[]>()
 
     if (error) throw error
-    if (!items || items.length === 0) {
-      return NextResponse.json({ message: 'No items to update', updated: 0 })
+
+    const allCandidates = raw ?? []
+    const items = allCandidates
+      .filter(i => !UNRESOLVABLE_ID_RE.test(i.ml_item_id))
+      .slice(0, BATCH_SIZE)
+
+    const skippedUnresolvable = allCandidates.length - allCandidates.filter(i => !UNRESOLVABLE_ID_RE.test(i.ml_item_id)).length
+
+    if (items.length === 0) {
+      return NextResponse.json({
+        message: 'No items to update',
+        updated: 0,
+        skippedUnresolvable
+      })
     }
 
     let updated = 0
     let scored = 0
     let errors = 0
+    let deactivated = 0
 
-    // 2. Fetch current price for each item from ML API (authenticated, item OR catalog product)
+    /**
+     * Marca un fallo de fetch. Clave: también movemos last_seen_at para que el
+     * item rote y no vuelva a encabezar la cola en la corrida siguiente.
+     */
+    async function registerFailure(item: CronItem) {
+      const failures = (item.fetch_failures ?? 0) + 1
+      const patch: Record<string, unknown> = {
+        fetch_failures: failures,
+        last_seen_at: new Date().toISOString()
+      }
+      if (failures >= MAX_FETCH_FAILURES) {
+        patch.is_active = false
+        deactivated++
+      }
+      await supabaseAdmin.from('items').update(patch).eq('id', item.id)
+    }
+
+    // 2. Traer el precio actual de cada item (item o producto de catálogo)
     for (const item of items) {
       try {
         const mlData = await fetchMlInfo(item.ml_item_id)
 
         async function evaluateWithStoredPrice() {
-          // Use the latest stored price to evaluate alerts + Deal Score.
-          // Critical for catalog products & ML-restricted items where the cron
-          // can't fetch a fresh price but stored prices already meet alert criteria.
+          // Usamos el último precio guardado para evaluar alertas + Deal Score.
+          // Necesario para productos de catálogo e items restringidos por ML,
+          // donde el cron no puede traer precio fresco pero los precios ya
+          // guardados pueden cumplir la condición de una alerta.
           const { data: latest } = await supabaseAdmin
             .from('price_history')
             .select('price')
@@ -65,6 +118,7 @@ export async function GET(request: Request) {
         if (!mlData) {
           console.log(`[Cron] ML fetch failed for ${item.ml_item_id}`)
           errors++
+          await registerFailure(item)
           await evaluateWithStoredPrice()
           continue
         }
@@ -74,17 +128,22 @@ export async function GET(request: Request) {
         const currency = mlData.currency
 
         if (!price || price === 0) {
+          // El fetch anduvo, sólo que no hay precio activo: no es un fallo.
+          await supabaseAdmin
+            .from('items')
+            .update({ fetch_failures: 0, last_seen_at: new Date().toISOString() })
+            .eq('id', item.id)
           await evaluateWithStoredPrice()
           continue
         }
 
-        // Calculate discount
+        // Calcular descuento
         let discountPercent = null
         if (originalPrice && originalPrice > price) {
           discountPercent = Math.round(((originalPrice - price) / originalPrice) * 100)
         }
 
-        // Get previous price for alert evaluation
+        // Precio anterior, para evaluar alertas
         const { data: prevRow } = await supabaseAdmin
           .from('price_history')
           .select('price')
@@ -94,7 +153,7 @@ export async function GET(request: Request) {
           .maybeSingle<{ price: number }>()
         const previousPrice = prevRow ? Number(prevRow.price) : null
 
-        // 3. Insert price using deduplication function
+        // 3. Insertar el precio usando la función de deduplicación
         await supabaseAdmin.rpc('insert_price_if_changed', {
           p_item_id: item.id,
           p_price: price,
@@ -105,11 +164,12 @@ export async function GET(request: Request) {
           p_source: 'cron'
         })
 
-        // Update last_seen_at and refresh shipping flags
+        // Actualizar last_seen_at, resetear el contador de fallos y refrescar flags
         await supabaseAdmin
           .from('items')
           .update({
             last_seen_at: new Date().toISOString(),
+            fetch_failures: 0,
             free_shipping: mlData.free_shipping,
             shipping_mode: mlData.shipping_mode,
             condition: mlData.condition,
@@ -117,12 +177,12 @@ export async function GET(request: Request) {
           })
           .eq('id', item.id)
 
-        // Always evaluate alerts for this item (24h cooldown prevents email spam).
+        // Siempre evaluamos alertas (el cooldown de 24h evita el spam de mails).
         processAlertsForItem(item.id, price, previousPrice).catch(err =>
           console.error('[Cron] Alert processing failed for item', item.id, err)
         )
 
-        // Recompute Deal Score after each price update (await so we count them)
+        // Recalcular Deal Score después de cada actualización de precio
         const score = await computeAndStoreDealScore(item.id).catch(err => {
           console.error('[Cron] Deal score failed for item', item.id, err)
           return null
@@ -131,8 +191,8 @@ export async function GET(request: Request) {
 
         updated++
 
-        // Rate limit: ML allows ~30 req/min for public endpoints (1 req / 2s).
-        await new Promise(r => setTimeout(r, 2000))
+        // Rate limit: ML tolera ~30 req/min en endpoints públicos.
+        await new Promise(r => setTimeout(r, SLEEP_MS))
 
       } catch (err) {
         console.error(`[Cron] Error processing ${item.ml_item_id}:`, err)
@@ -146,6 +206,8 @@ export async function GET(request: Request) {
       updated,
       scored,
       errors,
+      deactivated,
+      skippedUnresolvable,
       timestamp: new Date().toISOString()
     })
 
