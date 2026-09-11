@@ -20,6 +20,7 @@ interface PriceRow {
   price: number
   original_price: number | null
   discount_percent: number | null
+  currency: string | null
   captured_at: string
 }
 
@@ -126,7 +127,9 @@ async function loadProduct(mlItemId: string): Promise<ProductData | null> {
   const item = await ensureItemTracked(mlItemId)
   if (!item) return null
 
-  // Fetch up to 1 year of history; the chart component filters client-side by range
+  // Traemos hasta 1 año para que el gráfico pueda filtrar por rango del lado
+  // del cliente. El RPC devuelve DESC (más reciente primero) y ya filtrado a
+  // una sola moneda.
   const { data: rawHistory } = await supabaseAdmin.rpc('get_price_history', {
     p_ml_item_id: mlItemId,
     p_days: 365
@@ -137,31 +140,40 @@ async function loadProduct(mlItemId: string): Promise<ProductData | null> {
   let fake: ProductData['fakeDiscount'] = { detected: false, reason: null }
 
   if (history.length > 0) {
-    const prices = history.map(h => Number(h.price))
+    const latest = history[0]
+    const currency = latest.currency ?? 'ARS'
+
+    // Las tarjetas dicen "Mínimo 90d" / "Máximo 90d", así que se calculan sobre
+    // 90 días reales — no sobre los 365 que pedimos para el gráfico.
+    const cutoff90 = Date.now() - 90 * 24 * 60 * 60 * 1000
+    const window90 = history.filter(h => new Date(h.captured_at).getTime() >= cutoff90)
+    const scope = window90.length > 0 ? window90 : history
+
+    const prices = scope.map(h => Number(h.price))
     const min = Math.min(...prices)
     const max = Math.max(...prices)
     const avg = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
-    const latest = history[0]
+
     stats = {
       min,
       max,
       avg,
-      count: history.length,
+      count: scope.length,
       latest: Number(latest.price),
       latestAt: latest.captured_at,
-      currency: 'ARS'
+      currency
     }
 
     if (latest.original_price && Number(latest.original_price) > Number(latest.price)) {
-      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
-      const last30 = history.filter(h => new Date(h.captured_at).getTime() >= cutoff)
+      const cutoff30 = Date.now() - 30 * 24 * 60 * 60 * 1000
+      const last30 = history.filter(h => new Date(h.captured_at).getTime() >= cutoff30)
       if (last30.length > 1) {
         const minLast30 = Math.min(...last30.map(h => Number(h.price)))
         if (minLast30 < Number(latest.original_price) * 0.95) {
           fake = {
             detected: true,
             reason:
-              `El precio ya estuvo en ${fmtPrice(minLast30)} en los últimos 30 días — el "precio anterior" de ${fmtPrice(Number(latest.original_price))} parece inflado.`
+              `El precio ya estuvo en ${fmtPrice(minLast30, currency)} en los últimos 30 días — el "precio anterior" de ${fmtPrice(Number(latest.original_price), currency)} parece inflado.`
           }
         }
       }

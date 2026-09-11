@@ -7,7 +7,7 @@ interface PriceRow {
   price: number
   original_price: number | null
   discount_percent: number | null
-  price_type: string | null
+  currency: string | null
   captured_at: string
 }
 
@@ -46,11 +46,20 @@ export async function GET(request: Request) {
     })
   }
 
+  // get_price_history devuelve DESC (más reciente primero) y ya filtrado a una
+  // sola moneda, así que history[0] es el precio actual.
   const prices = history.map(h => Number(h.price))
   const min = Math.min(...prices)
   const max = Math.max(...prices)
   const avg = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
   const latest = history[0]
+  const currency = latest.currency ?? 'ARS'
+  const fmt = (n: number) =>
+    new Intl.NumberFormat('es-AR', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 0
+    }).format(n)
 
   // Fake-discount detection: was the price recently lower than its claimed "original"?
   let fakeDiscountDetected = false
@@ -65,8 +74,8 @@ export async function GET(request: Request) {
       if (minLast30 < latest.original_price * 0.95) {
         fakeDiscountDetected = true
         fakeDiscountReason =
-          `El precio ya estuvo en $${Math.round(minLast30).toLocaleString('es-AR')} ` +
-          `en los últimos 30 días — el "precio anterior" de $${Math.round(latest.original_price).toLocaleString('es-AR')} parece inflado.`
+          `El precio ya estuvo en ${fmt(minLast30)} en los últimos 30 días — ` +
+          `el "precio anterior" de ${fmt(Number(latest.original_price))} parece inflado.`
       }
     }
   }
@@ -81,7 +90,7 @@ export async function GET(request: Request) {
       count: history.length,
       latest_price: Number(latest.price),
       latest_at: latest.captured_at,
-      currency: 'ARS'
+      currency
     },
     fake_discount: {
       detected: fakeDiscountDetected,
