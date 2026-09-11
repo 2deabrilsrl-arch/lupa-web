@@ -63,18 +63,34 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Fichas de producto con al menos 2 registros de precio. Con uno solo la
   // página no tiene historial que mostrar y declarar miles de páginas finas
   // juega en contra; esas van con noindex hasta que el cron les junte datos.
+  //
+  // Hay que paginar sí o sí: PostgREST corta las respuestas en 1.000 filas sin
+  // importar el p_limit que le pasemos. Pedir 45.000 de una devuelve 1.000 y no
+  // avisa — el sitemap salía con exactamente 1.000 productos.
   const budget = MAX_URLS - staticUrls.length - categoryUrls.length
-  const { data: itemsRaw } = await supabaseAdmin.rpc('get_indexable_items', {
-    p_limit: budget,
-    p_offset: 0
-  })
+  const PAGE = 1000
 
-  const productUrls: MetadataRoute.Sitemap = ((itemsRaw as SitemapItem[] | null) ?? []).map(i => ({
-    url: `${BASE_URL}/p/${i.ml_item_id}`,
-    lastModified: i.last_price_at ? new Date(i.last_price_at) : now,
-    changeFrequency: 'daily' as const,
-    priority: 0.7
-  }))
+  const productUrls: MetadataRoute.Sitemap = []
+  for (let offset = 0; offset < budget; offset += PAGE) {
+    const { data: itemsRaw, error } = await supabaseAdmin.rpc('get_indexable_items', {
+      p_limit: Math.min(PAGE, budget - offset),
+      p_offset: offset
+    })
+    if (error) {
+      console.error('[sitemap] get_indexable_items falló en offset', offset, error)
+      break
+    }
+    const batch = (itemsRaw as SitemapItem[] | null) ?? []
+    for (const i of batch) {
+      productUrls.push({
+        url: `${BASE_URL}/p/${i.ml_item_id}`,
+        lastModified: i.last_price_at ? new Date(i.last_price_at) : now,
+        changeFrequency: 'daily' as const,
+        priority: 0.7
+      })
+    }
+    if (batch.length < PAGE) break
+  }
 
   return [...staticUrls, ...categoryUrls, ...productUrls]
 }
