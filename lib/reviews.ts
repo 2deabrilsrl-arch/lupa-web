@@ -319,14 +319,13 @@ export async function processReviewsBatch(): Promise<{
   // del catálogo no se miraba nunca. Ahora la cola rota por reviews_checked_at.
   const cutoff = new Date(Date.now() - REANALYSIS_INTERVAL_MS).toISOString()
 
-  const { data: items, error } = await supabaseAdmin
-    .from('items')
-    .select('id, ml_item_id, title')
-    .eq('is_active', true)
-    .is('deleted_at', null)
-    .or(`reviews_checked_at.is.null,reviews_checked_at.lt.${cutoff}`)
-    .order('reviews_checked_at', { ascending: true, nullsFirst: true })
-    .limit(60)
+  // Prioridad: los productos que YA tienen historial de precio. Son los que
+  // entran al sitemap y los que la gente visita; analizar los 6.300 en orden
+  // ciego tardaría más de medio año a 27 por corrida.
+  const { data: items, error } = await supabaseAdmin.rpc('get_items_for_review_analysis', {
+    p_cutoff: cutoff,
+    p_limit: 60
+  })
 
   if (error || !items || items.length === 0) {
     return { total: 0, analyzed: 0, skipped: 0, errors: 0, timedOut: false }
@@ -338,7 +337,7 @@ export async function processReviewsBatch(): Promise<{
   let procesados = 0
   let timedOut = false
 
-  for (const item of items) {
+  for (const item of items as Array<{ id: number; ml_item_id: string; title: string }>) {
     if (Date.now() - arranque > BATCH_TIME_BUDGET_MS) {
       timedOut = true
       break

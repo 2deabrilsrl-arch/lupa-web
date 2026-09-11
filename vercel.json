@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/analyze-reviews",
-      "schedule": "0 4 * * *"
+      "schedule": "15 */6 * * *"
     },
     {
       "path": "/api/cron/discover-items",
