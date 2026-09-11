@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { supabaseAdmin } from '@/lib/supabase'
 import { extractMlItemId } from '@/lib/ml-url'
 import { fetchMlInfo } from '@/lib/ml-fetch'
-import { mlWebUrl } from '@/lib/format'
+import { mlWebUrl, formatPrice } from '@/lib/format'
 import PriceChart from './PriceChart'
 import { installUrl } from '@/lib/config'
 
@@ -60,8 +60,7 @@ interface ProductData {
   dealScore: DealScoreRow | null
 }
 
-const fmtPrice = (n: number, currency = 'ARS') =>
-  new Intl.NumberFormat('es-AR', { style: 'currency', currency, maximumFractionDigits: 0 }).format(n)
+const fmtPrice = formatPrice
 
 async function ensureItemTracked(mlItemId: string): Promise<ItemRow | null> {
   const { data: existing } = await supabaseAdmin
