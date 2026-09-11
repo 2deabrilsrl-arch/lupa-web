@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { processAlertsForItem } from '@/lib/alerts'
 import { fetchMlInfo } from '@/lib/ml-fetch'
 import { computeAndStoreDealScore } from '@/lib/deal-score'
+import { resolveRootCategory } from '@/lib/ml-categories'
 
 // Vercel Cron: corre cada 6 horas (configurado en vercel.json)
 // Actualiza los precios de los items trackeados vía la API de ML.
@@ -28,6 +29,7 @@ interface CronItem {
   ml_item_id: string
   site_id: string | null
   fetch_failures: number | null
+  category_name: string | null
 }
 
 export async function GET(request: Request) {
@@ -43,7 +45,7 @@ export async function GET(request: Request) {
     //    (PostgREST no expone un NOT ~ regex cómodo sobre este patrón).
     const { data: raw, error } = await supabaseAdmin
       .from('items')
-      .select('id, ml_item_id, site_id, fetch_failures')
+      .select('id, ml_item_id, site_id, fetch_failures, category_name')
       .eq('is_active', true)
       .is('deleted_at', null)
       .order('last_seen_at', { ascending: true, nullsFirst: true })
@@ -71,6 +73,7 @@ export async function GET(request: Request) {
     let scored = 0
     let errors = 0
     let deactivated = 0
+    let categorized = 0
 
     /**
      * Marca un fallo de fetch. Clave: también movemos last_seen_at para que el
@@ -164,6 +167,18 @@ export async function GET(request: Request) {
           p_source: 'cron'
         })
 
+        // Backfill de categoría: la mayoría del catálogo entró por la extensión
+        // sin categoría, y sin eso no hay página de categoría ni enlazado
+        // interno para ese producto.
+        let categoryName: string | undefined
+        if (!item.category_name && mlData.category_id) {
+          const cat = await resolveRootCategory(mlData.category_id)
+          if (cat) {
+            categoryName = cat.rootName
+            categorized++
+          }
+        }
+
         // Actualizar last_seen_at, resetear el contador de fallos y refrescar flags
         await supabaseAdmin
           .from('items')
@@ -171,6 +186,7 @@ export async function GET(request: Request) {
             last_seen_at: new Date().toISOString(),
             fetch_failures: 0,
             category_id: mlData.category_id ?? undefined,
+            category_name: categoryName,
             free_shipping: mlData.free_shipping,
             shipping_mode: mlData.shipping_mode,
             condition: mlData.condition,
@@ -208,6 +224,7 @@ export async function GET(request: Request) {
       scored,
       errors,
       deactivated,
+      categorized,
       skippedUnresolvable,
       timestamp: new Date().toISOString()
     })
