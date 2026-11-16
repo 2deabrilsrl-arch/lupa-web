@@ -13,10 +13,14 @@ export const maxDuration = 300 // 5 min, tope del plan Pro
 /**
  * IDs que la API pública de ML NO resuelve: las páginas "user product" (/up/),
  * cuyo ID tiene una U extra después del prefijo de sitio (MLAU..., MLUU...).
- * Ni /items/{id} ni /products/{id} los aceptan, así que fetchMlInfo siempre
- * devuelve null. Antes copaban la cola entera del cron.
+ * Ni /items/{id} ni /products/{id} los aceptan.
+ *
+ * La exclusión vive AHORA EN LA CONSULTA (get_items_for_price_refresh). Antes
+ * se filtraba acá, en memoria, después del LIMIT: como esos items nunca se
+ * actualizan, se acumularon en la cabeza de la cola hasta que los 450 primeros
+ * fueron todos /up/ y el cron empezó a devolver "No items to update" con 9.600
+ * productos resolubles esperando detrás. Filtrar después del LIMIT fue el error.
  */
-const UNRESOLVABLE_ID_RE = /^(MLA|MLB|MLM|MLC|MCO|MLU|MPE|MEC|MPY|MBO|MRD)U\d+$/i
 
 /** Fallos consecutivos tras los cuales damos el item de baja. */
 const MAX_FETCH_FAILURES = 5
@@ -40,33 +44,17 @@ export async function GET(request: Request) {
   }
 
   try {
-    // 1. Traer los items activos más desactualizados primero.
-    //    Pedimos de más porque después filtramos los IDs irresolubles en memoria
-    //    (PostgREST no expone un NOT ~ regex cómodo sobre este patrón).
-    const { data: raw, error } = await supabaseAdmin
-      .from('items')
-      .select('id, ml_item_id, site_id, fetch_failures, category_name')
-      .eq('is_active', true)
-      .is('deleted_at', null)
-      .order('last_seen_at', { ascending: true, nullsFirst: true })
-      .limit(BATCH_SIZE * 3)
-      .returns<CronItem[]>()
+    // 1. Los items activos más desactualizados, ya sin los /up/ irresolubles.
+    const { data: raw, error } = await supabaseAdmin.rpc('get_items_for_price_refresh', {
+      p_limit: BATCH_SIZE
+    })
 
     if (error) throw error
 
-    const allCandidates = raw ?? []
-    const items = allCandidates
-      .filter(i => !UNRESOLVABLE_ID_RE.test(i.ml_item_id))
-      .slice(0, BATCH_SIZE)
-
-    const skippedUnresolvable = allCandidates.length - allCandidates.filter(i => !UNRESOLVABLE_ID_RE.test(i.ml_item_id)).length
+    const items = (raw as CronItem[] | null) ?? []
 
     if (items.length === 0) {
-      return NextResponse.json({
-        message: 'No items to update',
-        updated: 0,
-        skippedUnresolvable
-      })
+      return NextResponse.json({ message: 'No items to update', updated: 0 })
     }
 
     let updated = 0
@@ -225,7 +213,6 @@ export async function GET(request: Request) {
       errors,
       deactivated,
       categorized,
-      skippedUnresolvable,
       timestamp: new Date().toISOString()
     })
 
