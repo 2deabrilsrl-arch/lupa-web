@@ -25,8 +25,28 @@ export const maxDuration = 300 // 5 min, tope del plan Pro
 /** Fallos consecutivos tras los cuales damos el item de baja. */
 const MAX_FETCH_FAILURES = 5
 
-const BATCH_SIZE = 150
-const SLEEP_MS = 1200
+/**
+ * Tamaño de lote y paralelismo.
+ *
+ * Antes: 150 items, uno por uno, con `await sleep(1200)` entre cada uno. Eso
+ * son 180 de los 264 segundos que tardaba la corrida gastados en dormir, para
+ * un trabajo real de ~0,56 s por item. A 150 items cada 6 horas, los 9.600
+ * productos resolubles tardaban 16 DÍAS en completar una vuelta: un historial
+ * de precios con datos de hace un mes no detecta ninguna promo inflada.
+ *
+ * Ahora: un pool de workers. El ritmo contra ML lo fija la concurrencia, no un
+ * sleep fijo, y los dos valores son variables de entorno para poder bajarlos
+ * sin deploy si ML empieza a devolver 429.
+ */
+const BATCH_SIZE = Number(process.env.CRON_BATCH_SIZE ?? 600)
+const CONCURRENCY = Number(process.env.CRON_CONCURRENCY ?? 6)
+
+/**
+ * Presupuesto propio, por debajo del maxDuration de 300 s. Al llegar acá
+ * dejamos de tomar items nuevos y devolvemos lo hecho. Sin esto, una corrida
+ * lenta la corta Vercel a los 300 s y se pierde hasta el informe de qué pasó.
+ */
+const TIME_BUDGET_MS = 240_000
 
 interface CronItem {
   id: number
@@ -42,6 +62,8 @@ export async function GET(request: Request) {
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  const startedAt = Date.now()
 
   try {
     // 1. Los items activos más desactualizados, ya sin los /up/ irresolubles.
@@ -64,6 +86,19 @@ export async function GET(request: Request) {
     let categorized = 0
 
     /**
+     * Diagnóstico de categorías. Hoy `categorized` da 0 corrida tras corrida y
+     * la caché `ml_categories` está vacía, con 919 de 14.570 items
+     * categorizados. Estos contadores dicen en qué paso se corta: si ML no
+     * manda category_id, si lo manda y falla la resolución, o si los items que
+     * toca el cron ya venían categorizados.
+     */
+    let catAlreadySet = 0
+    let catNoIdFromMl = 0
+    let catLookupFailed = 0
+    let fromProduct = 0
+    let fromItem = 0
+
+    /**
      * Marca un fallo de fetch. Clave: también movemos last_seen_at para que el
      * item rote y no vuelva a encabezar la cola en la corrida siguiente.
      */
@@ -80,8 +115,7 @@ export async function GET(request: Request) {
       await supabaseAdmin.from('items').update(patch).eq('id', item.id)
     }
 
-    // 2. Traer el precio actual de cada item (item o producto de catálogo)
-    for (const item of items) {
+    async function processItem(item: CronItem) {
       try {
         const mlData = await fetchMlInfo(item.ml_item_id)
 
@@ -111,8 +145,11 @@ export async function GET(request: Request) {
           errors++
           await registerFailure(item)
           await evaluateWithStoredPrice()
-          continue
+          return
         }
+
+        if (mlData.source === 'product') fromProduct++
+        else fromItem++
 
         const price = mlData.price
         const originalPrice = mlData.original_price
@@ -125,7 +162,7 @@ export async function GET(request: Request) {
             .update({ fetch_failures: 0, last_seen_at: new Date().toISOString() })
             .eq('id', item.id)
           await evaluateWithStoredPrice()
-          continue
+          return
         }
 
         // Calcular descuento
@@ -159,11 +196,17 @@ export async function GET(request: Request) {
         // sin categoría, y sin eso no hay página de categoría ni enlazado
         // interno para ese producto.
         let categoryName: string | undefined
-        if (!item.category_name && mlData.category_id) {
+        if (item.category_name) {
+          catAlreadySet++
+        } else if (!mlData.category_id) {
+          catNoIdFromMl++
+        } else {
           const cat = await resolveRootCategory(mlData.category_id)
           if (cat) {
             categoryName = cat.rootName
             categorized++
+          } else {
+            catLookupFailed++
           }
         }
 
@@ -182,8 +225,10 @@ export async function GET(request: Request) {
           })
           .eq('id', item.id)
 
-        // Siempre evaluamos alertas (el cooldown de 24h evita el spam de mails).
-        processAlertsForItem(item.id, price, previousPrice).catch(err =>
+        // Alertas: ahora SÍ esperamos. Antes era fire-and-forget y en serverless
+        // la promesa se corta cuando la respuesta se devuelve. El cooldown de
+        // 24 h sigue evitando el spam de mails.
+        await processAlertsForItem(item.id, price, previousPrice).catch(err =>
           console.error('[Cron] Alert processing failed for item', item.id, err)
         )
 
@@ -196,23 +241,53 @@ export async function GET(request: Request) {
 
         updated++
 
-        // Rate limit: ML tolera ~30 req/min en endpoints públicos.
-        await new Promise(r => setTimeout(r, SLEEP_MS))
-
       } catch (err) {
         console.error(`[Cron] Error processing ${item.ml_item_id}:`, err)
         errors++
       }
     }
 
+    // 2. Pool de workers: CONCURRENCY items en vuelo, sin sleep entre medio.
+    let cursor = 0
+    let processed = 0
+    let budgetExhausted = false
+
+    async function worker() {
+      for (;;) {
+        if (Date.now() - startedAt > TIME_BUDGET_MS) {
+          budgetExhausted = true
+          return
+        }
+        const index = cursor++
+        if (index >= items.length) return
+        await processItem(items[index])
+        processed++
+      }
+    }
+
+    await Promise.all(
+      Array.from({ length: Math.min(CONCURRENCY, items.length) }, () => worker())
+    )
+
     return NextResponse.json({
       message: 'Cron completed',
       total: items.length,
+      processed,
       updated,
       scored,
       errors,
       deactivated,
       categorized,
+      budgetExhausted,
+      concurrency: CONCURRENCY,
+      elapsedMs: Date.now() - startedAt,
+      categoryDiag: {
+        alreadySet: catAlreadySet,
+        noIdFromMl: catNoIdFromMl,
+        lookupFailed: catLookupFailed,
+        fromProduct,
+        fromItem
+      },
       timestamp: new Date().toISOString()
     })
 
