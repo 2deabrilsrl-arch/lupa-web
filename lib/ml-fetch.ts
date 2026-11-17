@@ -41,6 +41,8 @@ export interface MlFetchDiag {
   productStatus: number | null
   /** Status de /products/{id}/items; null si no se llegó a llamar. */
   listingStatus: number | null
+  /** Status del multiget /items?ids=; null si no se llegó a llamar. */
+  multigetStatus: number | null
 }
 
 export interface MlFetchResult {
@@ -86,19 +88,38 @@ export async function fetchMlInfo(mlId: string): Promise<NormalizedMlInfo | null
 }
 
 export async function fetchMlInfoDetailed(mlId: string): Promise<MlFetchResult> {
-  const diag: MlFetchDiag = { itemStatus: 0, productStatus: null, listingStatus: null }
+  const diag: MlFetchDiag = { itemStatus: 0, productStatus: null, listingStatus: null, multigetStatus: null }
 
-  // 1. Try as a listing (item)
-  let itemRes: Response | null = null
-  try {
-    itemRes = await mlFetch(`/items/${mlId}`)
-    diag.itemStatus = itemRes.status
-  } catch {
-    diag.itemStatus = 0
+  // 1. Try as a listing (item) — sólo si el ID TIENE forma de publicación.
+  //
+  // La corrida del 17-nov: item:404 653, item:403 247. O sea, /items/{id} no
+  // resolvió ni uno de los 900 y lo llamábamos igual en todos. Los 653 son IDs
+  // de catálogo, que por definición no existen en /items/: esa llamada es
+  // basura pura y es el 73% de los items de cada lote.
+  let itemData: ItemResp | null = null
+
+  if (!esIdDeCatalogo(mlId)) {
+    let itemRes: Response | null = null
+    try {
+      itemRes = await mlFetch(`/items/${mlId}`)
+      diag.itemStatus = itemRes.status
+    } catch {
+      diag.itemStatus = 0
+    }
+
+    if (itemRes && itemRes.ok) {
+      itemData = (await itemRes.json()) as ItemResp
+    } else if (itemRes && itemRes.status === 403) {
+      // 403 = la publicación existe pero ML no la sirve por este endpoint.
+      // El multiget es la vía documentada para leer publicaciones ajenas.
+      // Son ~193 items por lote que hoy se pierden del todo (403 acá y 404 en
+      // /products): si el multiget anda, los recuperamos.
+      itemData = await fetchViaMultiget(mlId, diag)
+    }
   }
 
-  if (itemRes && itemRes.ok) {
-    const data = (await itemRes.json()) as ItemResp
+  if (itemData) {
+    const data = itemData
     const price = data.sale_price?.amount ?? data.price ?? null
     return {
       diag,
@@ -196,6 +217,39 @@ export async function fetchMlInfoDetailed(mlId: string): Promise<MlFetchResult> 
   }
 
   return { info: null, diag }
+}
+
+/**
+ * Los IDs de catálogo son prefijo de sitio + menos de 10 dígitos (MLA47207534).
+ * Las publicaciones tienen 10 o más. Las páginas /up/ llevan una U extra
+ * después del prefijo y no las resuelve ningún endpoint.
+ */
+function esIdDeCatalogo(mlId: string): boolean {
+  return /^[A-Z]{3}[0-9]{1,9}$/.test(mlId)
+}
+
+/**
+ * Multiget: la forma documentada de leer publicaciones de otros vendedores
+ * cuando /items/{id} devuelve 403. Responde una lista de {code, body}.
+ */
+async function fetchViaMultiget(mlId: string, diag: MlFetchDiag): Promise<ItemResp | null> {
+  try {
+    const res = await mlFetch(`/items?ids=${encodeURIComponent(mlId)}`)
+    diag.multigetStatus = res.status
+    if (!res.ok) return null
+    const data = (await res.json()) as Array<{ code: number; body: ItemResp | null }>
+    const hit = data.find(r => r.code === 200 && r.body)
+    if (!hit?.body) {
+      // Guardamos el code interno para distinguirlo del status HTTP externo:
+      // el multiget devuelve 200 con cada item fallado adentro.
+      diag.multigetStatus = data[0]?.code ?? res.status
+      return null
+    }
+    return hit.body
+  } catch {
+    diag.multigetStatus = 0
+    return null
+  }
 }
 
 interface ProductItemListing {

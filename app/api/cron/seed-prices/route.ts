@@ -128,6 +128,14 @@ export async function GET(request: Request) {
       (diag.productStatus === null && [400, 403, 404].includes(diag.itemStatus))
 
     /**
+     * Mientras no sepamos si el multiget recupera los items que dan 403 en
+     * /items/, NO les sumamos strike: serían ~193 por lote y a los 5 se
+     * desactivan. Prefiero que roten sin castigo una semana más antes que dar
+     * de baja items que quizá se puedan recuperar.
+     */
+    const enPruebaDeMultiget = (diag: MlFetchDiag) => diag.multigetStatus !== null
+
+    /**
      * Marca un fallo de fetch. Clave: también movemos last_seen_at para que el
      * item rote y no vuelva a encabezar la cola en la corrida siguiente.
      */
@@ -155,6 +163,7 @@ export async function GET(request: Request) {
         bump('item', diag.itemStatus)
         bump('product', diag.productStatus)
         bump('listing', diag.listingStatus)
+        bump('multiget', diag.multigetStatus)
 
         async function evaluateWithStoredPrice() {
           // Usamos el último precio guardado para evaluar alertas + Deal Score.
@@ -180,7 +189,7 @@ export async function GET(request: Request) {
         if (!mlData) {
           console.log(`[Cron] ML fetch failed for ${item.ml_item_id}`)
           errors++
-          await registerFailure(item, esFalloDefinitivo(diag))
+          await registerFailure(item, esFalloDefinitivo(diag) && !enPruebaDeMultiget(diag))
           await evaluateWithStoredPrice()
           return
         }
