@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { processAlertsForItem } from '@/lib/alerts'
-import { fetchMlInfo } from '@/lib/ml-fetch'
+import { fetchMlInfoDetailed, type MlFetchDiag } from '@/lib/ml-fetch'
 import { computeAndStoreDealScore } from '@/lib/deal-score'
 import { resolveRootCategory } from '@/lib/ml-categories'
 
@@ -38,7 +38,11 @@ const MAX_FETCH_FAILURES = 5
  * sleep fijo, y los dos valores son variables de entorno para poder bajarlos
  * sin deploy si ML empieza a devolver 429.
  */
-const BATCH_SIZE = Number(process.env.CRON_BATCH_SIZE ?? 600)
+// 600 items tardaron 74 s de los 240 s de presupuesto (17-nov). Subimos a 900,
+// que con la llamada extra de categoría debería quedar en ~110-130 s. A 4
+// corridas por día son 3.600 items/día: vuelta completa al catálogo resoluble
+// en menos de 3 días, contra los 16 de la versión secuencial.
+const BATCH_SIZE = Number(process.env.CRON_BATCH_SIZE ?? 900)
 const CONCURRENCY = Number(process.env.CRON_CONCURRENCY ?? 6)
 
 /**
@@ -97,27 +101,60 @@ export async function GET(request: Request) {
     let catLookupFailed = 0
     let fromProduct = 0
     let fromItem = 0
+    let catFromListing = 0
+
+    /**
+     * Qué devuelve cada endpoint de ML, agregado. La corrida del 17-nov dio
+     * 140 errores sobre 600 (23%, contra 11% de la secuencial) y no había forma
+     * de saber si eran items muertos o ML frenándonos por ritmo. La diferencia
+     * importa: un 429 no es culpa del item y no tiene que sumarle un strike.
+     */
+    const statusCount: Record<string, number> = {}
+    const bump = (endpoint: string, status: number | null) => {
+      if (status === null) return
+      const key = `${endpoint}:${status}`
+      statusCount[key] = (statusCount[key] ?? 0) + 1
+    }
+
+    /**
+     * Un fallo cuenta como strike sólo si ML dijo algo definitivo sobre el
+     * item (404 no existe, 400 mal formado). Un 429, un 5xx o un timeout son
+     * problemas nuestros o de ML, y sumarlos lleva a dar de baja items sanos:
+     * con 5 strikes el item se desactiva, así que a este ritmo bastarían un par
+     * de corridas con ML lento para perder medio catálogo.
+     */
+    const esFalloDefinitivo = (diag: MlFetchDiag) =>
+      [400, 403, 404].includes(diag.productStatus ?? 0) ||
+      (diag.productStatus === null && [400, 403, 404].includes(diag.itemStatus))
 
     /**
      * Marca un fallo de fetch. Clave: también movemos last_seen_at para que el
      * item rote y no vuelva a encabezar la cola en la corrida siguiente.
      */
-    async function registerFailure(item: CronItem) {
-      const failures = (item.fetch_failures ?? 0) + 1
+    async function registerFailure(item: CronItem, definitivo: boolean) {
       const patch: Record<string, unknown> = {
-        fetch_failures: failures,
+        // last_seen_at se mueve SIEMPRE, aunque no sumemos strike: es lo que
+        // hace rotar la cola. Sin esto los items muertos vuelven a encabezarla
+        // en cada corrida, que fue exactamente el bug de septiembre.
         last_seen_at: new Date().toISOString()
       }
-      if (failures >= MAX_FETCH_FAILURES) {
-        patch.is_active = false
-        deactivated++
+      if (definitivo) {
+        const failures = (item.fetch_failures ?? 0) + 1
+        patch.fetch_failures = failures
+        if (failures >= MAX_FETCH_FAILURES) {
+          patch.is_active = false
+          deactivated++
+        }
       }
       await supabaseAdmin.from('items').update(patch).eq('id', item.id)
     }
 
     async function processItem(item: CronItem) {
       try {
-        const mlData = await fetchMlInfo(item.ml_item_id)
+        const { info: mlData, diag } = await fetchMlInfoDetailed(item.ml_item_id)
+        bump('item', diag.itemStatus)
+        bump('product', diag.productStatus)
+        bump('listing', diag.listingStatus)
 
         async function evaluateWithStoredPrice() {
           // Usamos el último precio guardado para evaluar alertas + Deal Score.
@@ -143,7 +180,7 @@ export async function GET(request: Request) {
         if (!mlData) {
           console.log(`[Cron] ML fetch failed for ${item.ml_item_id}`)
           errors++
-          await registerFailure(item)
+          await registerFailure(item, esFalloDefinitivo(diag))
           await evaluateWithStoredPrice()
           return
         }
@@ -205,6 +242,7 @@ export async function GET(request: Request) {
           if (cat) {
             categoryName = cat.rootName
             categorized++
+            if (mlData.category_source === 'listing') catFromListing++
           } else {
             catLookupFailed++
           }
@@ -286,8 +324,10 @@ export async function GET(request: Request) {
         noIdFromMl: catNoIdFromMl,
         lookupFailed: catLookupFailed,
         fromProduct,
-        fromItem
+        fromItem,
+        fromListing: catFromListing
       },
+      statusCount,
       timestamp: new Date().toISOString()
     })
 
