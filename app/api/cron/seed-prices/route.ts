@@ -130,9 +130,18 @@ export async function GET(request: Request) {
      * con 5 strikes el item se desactiva, así que a este ritmo bastarían un par
      * de corridas con ML lento para perder medio catálogo.
      */
-    const esFalloDefinitivo = (diag: MlFetchDiag) =>
-      [400, 403, 404].includes(diag.productStatus ?? 0) ||
-      (diag.productStatus === null && [400, 403, 404].includes(diag.itemStatus ?? 0))
+    const DEFINITIVOS = [400, 403, 404]
+
+    const esFalloDefinitivo = (diag: MlFetchDiag) => {
+      // El último endpoint que llegamos a llamar es el que manda. Para un /up/
+      // sólo se llama a /products/{id}/items, así que su 404 es el veredicto:
+      // sin esto esos items nunca sumaban strike y los 416 muertos de cada
+      // lote iban a rotar para siempre, comiéndose el 40% de cada corrida.
+      if (diag.productStatus !== null) return DEFINITIVOS.includes(diag.productStatus)
+      if (diag.itemStatus !== null) return DEFINITIVOS.includes(diag.itemStatus)
+      if (diag.listingStatus !== null) return DEFINITIVOS.includes(diag.listingStatus)
+      return false
+    }
 
 
     /**
