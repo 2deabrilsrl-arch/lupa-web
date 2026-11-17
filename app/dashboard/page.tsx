@@ -67,6 +67,19 @@ export default async function DashboardPage({
 
   const siteId = explicitSite ?? rememberedSite!
 
+  // Guardamos el país elegido en la cuenta, no sólo en la cookie. La cookie se
+  // pierde al cambiar de navegador o dispositivo, y este dato hace falta para
+  // normalizar el teléfono al país correcto y para saber de dónde es la base.
+  // No bloqueamos el render por esto.
+  void supabaseAdmin
+    .from('users')
+    .update({ site_id: siteId })
+    .eq('id', user.id)
+    .neq('site_id', siteId)
+    .then(({ error }) => {
+      if (error) console.error('[Dashboard] No se pudo guardar el país', error)
+    })
+
   const { data: items } = await supabaseAdmin.rpc('get_dashboard_items', {
     p_site_id: siteId,
     p_limit: 500

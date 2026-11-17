@@ -51,7 +51,17 @@ export async function PATCH(request: Request) {
     } else {
       // El país sale del sitio de ML que el usuario eligió en el panel, no de
       // una suposición: menos de la mitad del catálogo es argentino.
-      const site = (await cookies()).get('lupa_site')?.value
+      // La cookie es la fuente más fresca; si no está (otro navegador, otro
+      // dispositivo), usamos el país guardado en la cuenta.
+      let site = (await cookies()).get('lupa_site')?.value
+      if (!site) {
+        const { data: fila } = await supabaseAdmin
+          .from('users')
+          .select('site_id')
+          .eq('id', user.id)
+          .maybeSingle<{ site_id: string | null }>()
+        site = fila?.site_id ?? undefined
+      }
       const e164 = aE164(raw, site)
       if (!e164) {
         const regla = reglaDe(site)
