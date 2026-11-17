@@ -42,7 +42,13 @@ const MAX_FETCH_FAILURES = 5
 // que con la llamada extra de categoría debería quedar en ~110-130 s. A 4
 // corridas por día son 3.600 items/día: vuelta completa al catálogo resoluble
 // en menos de 3 días, contra los 16 de la versión secuencial.
-const BATCH_SIZE = Number(process.env.CRON_BATCH_SIZE ?? 900)
+// 900 items tardaron 107 s de los 240 s de presupuesto (17-nov), sin un solo
+// 429 en tres corridas seguidas. 1.500 deberían entrar en ~175 s. A 4 corridas
+// por día son 6.000 items/día: vuelta completa al catálogo resoluble en menos
+// de dos días, contra los 16 de la versión secuencial. El guard de 240 s está
+// justamente para que una corrida lenta devuelva lo hecho en vez de que la
+// corte Vercel.
+const BATCH_SIZE = Number(process.env.CRON_BATCH_SIZE ?? 1500)
 const CONCURRENCY = Number(process.env.CRON_CONCURRENCY ?? 6)
 
 /**
@@ -125,15 +131,8 @@ export async function GET(request: Request) {
      */
     const esFalloDefinitivo = (diag: MlFetchDiag) =>
       [400, 403, 404].includes(diag.productStatus ?? 0) ||
-      (diag.productStatus === null && [400, 403, 404].includes(diag.itemStatus))
+      (diag.productStatus === null && [400, 403, 404].includes(diag.itemStatus ?? 0))
 
-    /**
-     * Mientras no sepamos si el multiget recupera los items que dan 403 en
-     * /items/, NO les sumamos strike: serían ~193 por lote y a los 5 se
-     * desactivan. Prefiero que roten sin castigo una semana más antes que dar
-     * de baja items que quizá se puedan recuperar.
-     */
-    const enPruebaDeMultiget = (diag: MlFetchDiag) => diag.multigetStatus !== null
 
     /**
      * Marca un fallo de fetch. Clave: también movemos last_seen_at para que el
@@ -163,7 +162,6 @@ export async function GET(request: Request) {
         bump('item', diag.itemStatus)
         bump('product', diag.productStatus)
         bump('listing', diag.listingStatus)
-        bump('multiget', diag.multigetStatus)
 
         async function evaluateWithStoredPrice() {
           // Usamos el último precio guardado para evaluar alertas + Deal Score.
@@ -189,7 +187,7 @@ export async function GET(request: Request) {
         if (!mlData) {
           console.log(`[Cron] ML fetch failed for ${item.ml_item_id}`)
           errors++
-          await registerFailure(item, esFalloDefinitivo(diag) && !enPruebaDeMultiget(diag))
+          await registerFailure(item, esFalloDefinitivo(diag))
           await evaluateWithStoredPrice()
           return
         }
