@@ -1132,3 +1132,72 @@ a:hover { text-decoration: underline; }
 .cat-pager a:hover {
   border-color: #3483FA;
 }
+
+/* ---- Página /alerta: aterrizaje del botón "Avisame si baja" de la extensión ---- */
+.alerta-box { max-width: 520px; }
+.alerta-producto {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 16px 0 20px;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+}
+.alerta-producto img { border-radius: 6px; object-fit: contain; flex-shrink: 0; }
+.alerta-producto a { font-weight: 600; line-height: 1.35; }
+.alerta-precios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: #4b5563;
+}
+.alerta-label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+.alerta-input {
+  width: 100%;
+  padding: 11px 12px;
+  font-size: 17px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+}
+.alerta-input:focus { outline: 2px solid #4D9DCE; outline-offset: 1px; border-color: #4D9DCE; }
+.alerta-submit {
+  width: 100%;
+  margin-top: 14px;
+  padding: 12px 16px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  background: #4D9DCE;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.alerta-submit:hover { background: #3e86b4; }
+.alerta-submit:disabled { opacity: .6; cursor: default; }
+.alerta-nota { margin-top: 12px; font-size: 13px; color: #6b7280; }
+.alerta-error { margin-top: 10px; font-size: 14px; color: #b91c1c; }
+
+@media (prefers-color-scheme: dark) {
+  .alerta-producto { background: #111827; border-color: #374151; }
+  .alerta-precios { color: #9ca3af; }
+  .alerta-input { background: #111827; border-color: #374151; color: #e5e7eb; }
+  .alerta-nota { color: #9ca3af; }
+}
+
+/* ---- Teléfono + opt-in de WhatsApp en Configuración ---- */
+.settings-label-wa { margin-top: 14px; }
+.settings-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.settings-check input { margin-top: 2px; flex-shrink: 0; }
+.settings-check input:disabled + span { opacity: .55; }

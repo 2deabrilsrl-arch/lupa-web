@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { NEXT_COOKIE } from '../login/route'
 import { cookies } from 'next/headers'
 import { ML_CONFIG, supabaseAdmin } from '@/lib/supabase'
 import { signSession, SESSION_COOKIE, SESSION_MAX_AGE } from '@/lib/session'
@@ -133,7 +134,16 @@ export async function GET(request: Request) {
       return NextResponse.redirect(new URL('/error?reason=token_save_failed', request.url))
     }
 
-    const response = NextResponse.redirect(new URL('/dashboard', request.url))
+    // Volver a donde el usuario quería ir. Lo usa el botón de alerta de la
+    // extensión: sin esto, hacer clic en "avisame si baja" sin sesión te
+    // dejaba en el panel y había que buscar el producto de nuevo a mano.
+    const pedido = (await cookies()).get(NEXT_COOKIE)?.value
+    const destino = pedido && pedido.startsWith('/') && !pedido.startsWith('//')
+      ? pedido
+      : '/dashboard'
+
+    const response = NextResponse.redirect(new URL(destino, request.url))
+    response.cookies.delete(NEXT_COOKIE)
     response.cookies.set(SESSION_COOKIE, signSession(user.id), {
       httpOnly: true,
       secure: true,

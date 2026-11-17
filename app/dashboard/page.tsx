@@ -127,12 +127,19 @@ export default async function DashboardPage({
   // User preferences (extra fields not in session)
   const { data: prefsRaw } = await supabaseAdmin
     .from('users')
-    .select('notification_email, display_name')
+    .select('notification_email, display_name, whatsapp_phone, whatsapp_opt_in_at')
     .eq('id', user.id)
-    .maybeSingle<{ notification_email: string | null; display_name: string | null }>()
+    .maybeSingle<{
+      notification_email: string | null
+      display_name: string | null
+      whatsapp_phone: string | null
+      whatsapp_opt_in_at: string | null
+    }>()
 
   const prefs: UserPrefs = {
     notification_email: prefsRaw?.notification_email ?? null,
+    whatsapp_phone: prefsRaw?.whatsapp_phone ?? null,
+    whatsapp_opt_in: Boolean(prefsRaw?.whatsapp_opt_in_at),
     display_name: prefsRaw?.display_name ?? null,
     ml_email: user.email ?? null
   }

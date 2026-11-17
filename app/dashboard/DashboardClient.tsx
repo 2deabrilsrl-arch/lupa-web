@@ -32,6 +32,8 @@ export interface UserAlert {
 
 export interface UserPrefs {
   notification_email: string | null
+  whatsapp_phone: string | null
+  whatsapp_opt_in: boolean
   display_name: string | null
   ml_email: string | null
 }
@@ -63,6 +65,8 @@ export default function DashboardClient({
 
   const [showSettings, setShowSettings] = useState(false)
   const [notifEmail, setNotifEmail] = useState(initialPrefs.notification_email ?? '')
+  const [waPhone, setWaPhone] = useState(initialPrefs.whatsapp_phone ?? '')
+  const [waOptIn, setWaOptIn] = useState(initialPrefs.whatsapp_opt_in)
   const [savingPrefs, setSavingPrefs] = useState(false)
   const [prefsMsg, setPrefsMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const [search, setSearch] = useState('')
@@ -165,13 +169,23 @@ export default function DashboardClient({
       const res = await fetch('/api/me/preferences', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notification_email: value || null })
+        body: JSON.stringify({
+          notification_email: value || null,
+          whatsapp_phone: waPhone.trim() || null,
+          whatsapp_opt_in: waPhone.trim() ? waOptIn : false
+        })
       })
       const data = await res.json()
       if (!res.ok) {
         setPrefsMsg({ kind: 'err', text: data.error || 'No pudimos guardar' })
       } else {
-        setPrefs(p => ({ ...p, notification_email: value || null }))
+        setPrefs(p => ({
+          ...p,
+          notification_email: value || null,
+          whatsapp_phone: (data.updated?.whatsapp_phone as string | null) ?? null,
+          whatsapp_opt_in: Boolean(data.updated?.whatsapp_opt_in_at)
+        }))
+        if (data.updated?.whatsapp_phone) setWaPhone(String(data.updated.whatsapp_phone))
         setPrefsMsg({ kind: 'ok', text: 'Guardado. Las próximas alertas van a este email.' })
       }
     } catch {
@@ -212,6 +226,33 @@ export default function DashboardClient({
             Si lo dejás vacío, te avisamos al email de tu cuenta de MercadoLibre
             ({prefs.ml_email ?? '—'}).
           </p>
+          <label className="settings-label settings-label-wa">
+            WhatsApp (opcional)
+            <input
+              type="tel"
+              className="settings-input"
+              placeholder="341 123 4567"
+              value={waPhone}
+              onChange={e => setWaPhone(e.target.value)}
+            />
+          </label>
+
+          <label className="settings-check">
+            <input
+              type="checkbox"
+              checked={waOptIn}
+              disabled={!waPhone.trim()}
+              onChange={e => setWaOptIn(e.target.checked)}
+            />
+            <span>Quiero recibir las alertas de precio por WhatsApp</span>
+          </label>
+
+          <p className="settings-hint">
+            Todavía no mandamos nada por WhatsApp: estamos dando de alta el
+            número. Dejanos el tuyo y te avisamos cuando esté. El mail sigue
+            funcionando igual, y podés sacarlo cuando quieras.
+          </p>
+
           <button onClick={savePrefs} disabled={savingPrefs} className="settings-save">
             {savingPrefs ? 'Guardando...' : 'Guardar'}
           </button>
