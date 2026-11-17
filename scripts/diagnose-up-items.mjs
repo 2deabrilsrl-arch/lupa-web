@@ -56,8 +56,17 @@ const ml = path =>
   })
 
 // Tomamos items /up/ que la extensión visitó hace poco: sabemos que existen.
+//
+// OJO: antes esto traía los 300 items más recientes y filtraba los /up/ del
+// lado del cliente. Dejó de funcionar cuando el cron pasó a actualizar 900
+// items por corrida: como el cron EXCLUYE los /up/, los 300 más recientes son
+// siempre items del cron y la muestra salía vacía. Ahora el filtro va en la
+// consulta, por prefijo de sitio + U.
+const PREFIJOS = ['MLA', 'MLB', 'MLM', 'MLC', 'MCO', 'MLU', 'MPE', 'MEC', 'MPY', 'MBO', 'MRD']
+const filtro = PREFIJOS.map(p => `ml_item_id.like.${p}U*`).join(',')
 const muestra = await sb(
-  'items?select=ml_item_id,permalink,site_id&is_active=eq.true&order=last_seen_at.desc&limit=300'
+  `items?select=ml_item_id,permalink,site_id&is_active=eq.true&or=(${filtro})` +
+  '&order=last_seen_at.desc&limit=20'
 )
 const ups = muestra.filter(i => /^[A-Z]{3}U\d+$/.test(i.ml_item_id)).slice(0, 3)
 
