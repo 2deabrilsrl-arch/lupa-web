@@ -49,6 +49,7 @@ interface ReviewsAnalysisRow {
   cons: string[] | null
   sizing_notes: string | null
   sentiment_score: number | null
+  sentiment_percentile: number | null
   total_reviews: number | null
   avg_rating: number | null
   analyzed_at: string
@@ -75,6 +76,19 @@ interface ProductData {
 }
 
 const fmtPrice = formatPrice
+
+/**
+ * El percentil en palabras. Mostrar "percentil 62" no le dice nada a nadie;
+ * la comparación contra el resto sí.
+ */
+function sentimentoEnPalabras(percentil: number): string {
+  const pct = Math.round(percentil * 100)
+  if (pct >= 85) return `Opiniones mejores que el ${pct}% de los productos que analizamos`
+  if (pct >= 60) return `Opiniones por encima del promedio (mejor que el ${pct}%)`
+  if (pct >= 40) return 'Opiniones en línea con el promedio'
+  if (pct >= 15) return `Opiniones por debajo del promedio (mejor que el ${pct}%)`
+  return `Opiniones entre las más flojas que vimos (mejor que el ${pct}%)`
+}
 
 async function ensureItemTracked(mlItemId: string): Promise<ItemRow | null> {
   const { data: existing } = await supabaseAdmin
@@ -196,7 +210,7 @@ async function loadProduct(mlItemId: string): Promise<ProductData | null> {
   // Latest reviews analysis (if any)
   const { data: reviewsAnalysis } = await supabaseAdmin
     .from('reviews_analysis')
-    .select('ai_summary, pros, cons, sizing_notes, sentiment_score, total_reviews, avg_rating, analyzed_at')
+    .select('ai_summary, pros, cons, sizing_notes, sentiment_score, sentiment_percentile, total_reviews, avg_rating, analyzed_at')
     .eq('item_id', item.id)
     .order('analyzed_at', { ascending: false })
     .limit(1)
@@ -569,17 +583,23 @@ export default async function ProductPage({ params }: RouteContext) {
                   {Number(reviewsAnalysis.avg_rating ?? 0).toFixed(1)}/5
                 </div>
               </div>
-              {typeof reviewsAnalysis.sentiment_score === 'number' && (
+              {/*
+                Antes acá decía "Sentimiento general: 91%" y una barra casi
+                llena. Todos los productos daban entre 85 y 100, así que el
+                número no informaba nada y encima hacía parecer excelente a
+                cualquier cosa. Lo que vale es la posición relativa dentro de
+                los productos que analizamos.
+              */}
+              {typeof reviewsAnalysis.sentiment_percentile === 'number' && (
                 <div className="pp-sentiment">
                   <div className="pp-sentiment-bar">
                     <div
                       className="pp-sentiment-fill"
-                      style={{ width: `${Math.round(reviewsAnalysis.sentiment_score * 100)}%` }}
+                      style={{ width: `${Math.round(reviewsAnalysis.sentiment_percentile * 100)}%` }}
                     />
                   </div>
                   <div className="pp-sentiment-label">
-                    Sentimiento general:{' '}
-                    <strong>{Math.round(reviewsAnalysis.sentiment_score * 100)}%</strong>
+                    {sentimentoEnPalabras(reviewsAnalysis.sentiment_percentile)}
                   </div>
                 </div>
               )}

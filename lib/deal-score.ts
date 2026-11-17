@@ -74,11 +74,34 @@ function priceScoreFromHistory(stats: PriceHistoryStats): number {
   return clamp(100 - ratio * 100, 0, 100)
 }
 
-function reviewsScoreFromSentiment(sentiment: number | null, totalReviews: number): number {
-  if (sentiment == null) return 50 // no analysis yet → neutral
-  // Light scaling for review volume — products with fewer reviews get pulled toward 50
+/**
+ * El 30% de reseñas se calcula sobre el PERCENTIL, no sobre sentiment_score.
+ *
+ * El score crudo no distingue: 1.728 análisis con promedio 0,911, y el 95% cae
+ * en cinco valores redondos (0,90 el 33%, 1,00 el 31%, 0,85 el 13%, 0,95 el
+ * 12%, 0,80 el 5%). Las reseñas de ML son realmente positivas, así que el
+ * número no está mal — pero como todos los productos sacaban ~91, este 30% del
+ * puntaje era prácticamente una constante y no hacía ningún trabajo.
+ *
+ * El percentil responde la pregunta que importa: no "¿tiene buenas reseñas?"
+ * (casi todos las tienen) sino "¿las tiene mejores que los demás?".
+ */
+function reviewsScoreFromSentiment(
+  sentiment: number | null,
+  totalReviews: number,
+  percentile: number | null
+): number {
+  // Sin análisis todavía → neutro.
+  if (sentiment == null) return 50
+
+  // El percentil tarda una corrida del cron en calcularse para un análisis
+  // nuevo; mientras tanto caemos al score crudo, que es lo que había antes.
+  const base = percentile != null ? percentile * 100 : sentiment * 100
+
+  // Los productos con pocas reseñas se tiran hacia el medio: un percentil alto
+  // sacado de 3 opiniones no es una señal.
   const volumeWeight = clamp(totalReviews / 50, 0.4, 1)
-  return 50 + (sentiment * 100 - 50) * volumeWeight
+  return clamp(50 + (base - 50) * volumeWeight, 0, 100)
 }
 
 async function sellerScoreFromMl(sellerId: number | null): Promise<number> {
@@ -149,17 +172,18 @@ export async function computeDealScore(itemId: number): Promise<DealScoreResult 
   // Reviews
   const { data: review } = await supabaseAdmin
     .from('reviews_analysis')
-    .select('sentiment_score, total_reviews')
+    .select('sentiment_score, total_reviews, sentiment_percentile')
     .eq('item_id', itemId)
     .order('analyzed_at', { ascending: false })
     .limit(1)
-    .maybeSingle<{ sentiment_score: number | null; total_reviews: number | null }>()
+    .maybeSingle<{ sentiment_score: number | null; total_reviews: number | null; sentiment_percentile: number | null }>()
 
   const factors: DealScoreFactors = {
     price: priceScoreFromHistory(stats),
     reviews: reviewsScoreFromSentiment(
       review?.sentiment_score ? Number(review.sentiment_score) : null,
-      review?.total_reviews ?? 0
+      review?.total_reviews ?? 0,
+      review?.sentiment_percentile != null ? Number(review.sentiment_percentile) : null
     ),
     seller: await sellerScoreFromMl(item.seller_id ?? null),
     shipping: shippingScore(item),
