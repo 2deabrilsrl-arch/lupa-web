@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { getSessionUser } from '@/lib/session'
 import { supabaseAdmin } from '@/lib/supabase'
 import { ML_SITES } from '@/lib/ml-url'
+import { reglaDe } from '@/lib/phone'
 import DashboardClient, { type TrackedItem, type UserAlert, type UserPrefs } from './DashboardClient'
 import CountryPicker from './CountryPicker'
 
@@ -140,6 +141,10 @@ export default async function DashboardPage({
     notification_email: prefsRaw?.notification_email ?? null,
     whatsapp_phone: prefsRaw?.whatsapp_phone ?? null,
     whatsapp_opt_in: Boolean(prefsRaw?.whatsapp_opt_in_at),
+    // El ejemplo de teléfono depende del país elegido: Lupa no es una app
+    // argentina y menos de la mitad del catálogo es MLA.
+    phone_example: reglaDe(siteId).ejemplo,
+    phone_code: reglaDe(siteId).codigo,
     display_name: prefsRaw?.display_name ?? null,
     ml_email: user.email ?? null
   }

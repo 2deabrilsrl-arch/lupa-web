@@ -1,26 +1,10 @@
 import { NextResponse } from 'next/server'
 import { getSessionUser } from '@/lib/session'
 import { supabaseAdmin } from '@/lib/supabase'
+import { cookies } from 'next/headers'
+import { aE164, reglaDe } from '@/lib/phone'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-/**
- * Normaliza a E.164. Sin el +, asumimos Argentina, que es de dónde viene casi
- * todo el tráfico. El 9 después del 54 es obligatorio para celulares y es lo
- * que la gente más olvida; el 15 es lo que más escriben de más.
- */
-function aE164(raw: string): string | null {
-  let v = raw.replace(/[^\d+]/g, '')
-  if (v.startsWith('+')) {
-    const d = v.slice(1)
-    return /^[1-9]\d{7,14}$/.test(d) ? `+${d}` : null
-  }
-  v = v.replace(/^0/, '')
-  // 11 15 1234-5678 -> el 15 va después del código de área
-  v = v.replace(/^(\d{2,4})15(\d{6,8})$/, '$1$2')
-  if (!/^\d{10}$/.test(v)) return null
-  return `+549${v}`
-}
 
 export async function PATCH(request: Request) {
   const user = await getSessionUser()
@@ -65,10 +49,17 @@ export async function PATCH(request: Request) {
       update.whatsapp_opt_in_at = null
       update.whatsapp_verified_at = null
     } else {
-      const e164 = aE164(raw)
+      // El país sale del sitio de ML que el usuario eligió en el panel, no de
+      // una suposición: menos de la mitad del catálogo es argentino.
+      const site = (await cookies()).get('lupa_site')?.value
+      const e164 = aE164(raw, site)
       if (!e164) {
+        const regla = reglaDe(site)
         return NextResponse.json(
-          { error: 'Teléfono inválido. Poné código de área y número, o el formato +54 9 341 1234567.' },
+          {
+            error: `Teléfono inválido. Poné código de área y número (ej. ${regla.ejemplo}), ` +
+                   `o escribilo completo con el código de país (+${regla.codigo}...).`
+          },
           { status: 400 }
         )
       }

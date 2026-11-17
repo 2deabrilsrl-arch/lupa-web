@@ -3,6 +3,14 @@ import { createHmac, timingSafeEqual } from 'crypto'
 import { supabaseAdmin } from './supabase'
 
 export const SESSION_COOKIE = 'lupa_session'
+
+/**
+ * A dónde volver después del login de ML. Vive acá y no en la route del login
+ * porque un `route.ts` de App Router sólo puede exportar handlers y un puñado
+ * de campos de configuración: cualquier otro export rompe el build con
+ * "is not a valid Route export field". `tsc --noEmit` no lo detecta.
+ */
+export const NEXT_COOKIE = 'lupa_next'
 export const SESSION_MAX_AGE = 60 * 60 * 24 * 30 // 30 days
 
 function secret() {

@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { randomBytes, createHash } from 'crypto'
 import { ML_CONFIG } from '@/lib/supabase'
+import { NEXT_COOKIE } from '@/lib/session'
 
 const PKCE_COOKIE = 'lupa_pkce'
-export const NEXT_COOKIE = 'lupa_next'
 
 /**
  * A dónde volver después de loguearse. Sólo rutas propias: cualquier cosa que

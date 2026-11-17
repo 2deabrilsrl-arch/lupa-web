@@ -34,6 +34,8 @@ export interface UserPrefs {
   notification_email: string | null
   whatsapp_phone: string | null
   whatsapp_opt_in: boolean
+  phone_example: string
+  phone_code: string
   display_name: string | null
   ml_email: string | null
 }
@@ -227,11 +229,11 @@ export default function DashboardClient({
             ({prefs.ml_email ?? '—'}).
           </p>
           <label className="settings-label settings-label-wa">
-            WhatsApp (opcional)
+            WhatsApp (opcional) <span className="settings-cc">+{prefs.phone_code}</span>
             <input
               type="tel"
               className="settings-input"
-              placeholder="341 123 4567"
+              placeholder={prefs.phone_example}
               value={waPhone}
               onChange={e => setWaPhone(e.target.value)}
             />

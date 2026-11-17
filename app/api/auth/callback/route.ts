@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
-import { NEXT_COOKIE } from '../login/route'
 import { cookies } from 'next/headers'
 import { ML_CONFIG, supabaseAdmin } from '@/lib/supabase'
-import { signSession, SESSION_COOKIE, SESSION_MAX_AGE } from '@/lib/session'
+import { signSession, SESSION_COOKIE, SESSION_MAX_AGE, NEXT_COOKIE } from '@/lib/session'
 import { sendWelcomeEmail, notifyAdminNewSignup } from '@/lib/email'
 
 const PKCE_COOKIE = 'lupa_pkce'

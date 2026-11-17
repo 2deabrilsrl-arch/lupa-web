@@ -1201,3 +1201,9 @@ a:hover { text-decoration: underline; }
 }
 .settings-check input { margin-top: 2px; flex-shrink: 0; }
 .settings-check input:disabled + span { opacity: .55; }
+.settings-cc {
+  margin-left: 6px;
+  font-weight: 400;
+  font-size: 12px;
+  color: #6b7280;
+}
