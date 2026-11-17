@@ -7,7 +7,7 @@ import { mlFetch } from './ml-service'
 
 export interface NormalizedMlInfo {
   ml_id: string
-  source: 'item' | 'product'
+  source: 'item' | 'product' | 'user_product'
   title: string
   thumbnail_url: string | null
   permalink: string | null
@@ -94,6 +94,48 @@ export async function fetchMlInfoDetailed(mlId: string): Promise<MlFetchResult> 
   // resolvió ni uno de los 900 y lo llamábamos igual en todos. Los 653 son IDs
   // de catálogo, que por definición no existen en /items/: esa llamada es
   // basura pura y es el 73% de los items de cada lote.
+  /**
+   * Páginas /up/ (user product): MLAU..., MLMU... Son 4.946 items, el 34% del
+   * catálogo, y hasta hoy el cron los salteaba porque ni /items/{id} ni
+   * /products/{id} los resuelven.
+   *
+   * El diagnóstico del 17-nov probó 8 formas de endpoint contra tres de ellos
+   * y encontró exactamente una que anda: /products/{id}/items devuelve 200 con
+   * las publicaciones reales y su precio, en los tres casos. Las otras siete
+   * dan 403 o 404, incluido /user-products/{id}, que contesta "caller is not
+   * allowed to access this user product".
+   *
+   * Vamos directo a esa: llamar a las otras dos antes sería gastar dos
+   * llamadas por item para recibir dos errores conocidos.
+   */
+  if (esIdDeUserProduct(mlId)) {
+    const listing = await fetchListingData(mlId, diag)
+    if (!listing || !listing.price) return { info: null, diag }
+    return {
+      diag,
+      info: {
+        ml_id: mlId,
+        source: 'user_product',
+        // El título, la miniatura y el permalink de estos items ya están en
+        // nuestra base: los cargó la extensión desde la página real. Acá sólo
+        // venimos a buscar el precio, y el cron no pisa esos campos.
+        title: '',
+        thumbnail_url: null,
+        permalink: null,
+        category_id: listing.category_id,
+        seller_id: listing.seller_id || null,
+        site_id: mlId.slice(0, 3),
+        price: listing.price,
+        original_price: listing.original_price,
+        currency: listing.currency,
+        free_shipping: false,
+        shipping_mode: null,
+        condition: null,
+        category_source: listing.category_id ? 'listing' : null
+      }
+    }
+  }
+
   let itemData: ItemResp | null = null
 
   if (!esIdDeCatalogo(mlId)) {
@@ -223,6 +265,11 @@ export async function fetchMlInfoDetailed(mlId: string): Promise<MlFetchResult> 
  */
 function esIdDeCatalogo(mlId: string): boolean {
   return /^[A-Z]{3}[0-9]{1,9}$/.test(mlId)
+}
+
+/** Páginas "user product": prefijo de sitio + U + dígitos (MLAU5383892195). */
+function esIdDeUserProduct(mlId: string): boolean {
+  return /^[A-Z]{3}U[0-9]+$/.test(mlId)
 }
 
 interface ProductItemListing {

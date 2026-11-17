@@ -108,6 +108,7 @@ export async function GET(request: Request) {
     let fromProduct = 0
     let fromItem = 0
     let catFromListing = 0
+    let fromUserProduct = 0
 
     /**
      * Qué devuelve cada endpoint de ML, agregado. La corrida del 17-nov dio
@@ -193,6 +194,7 @@ export async function GET(request: Request) {
         }
 
         if (mlData.source === 'product') fromProduct++
+        else if (mlData.source === 'user_product') fromUserProduct++
         else fromItem++
 
         const price = mlData.price
@@ -256,19 +258,25 @@ export async function GET(request: Request) {
         }
 
         // Actualizar last_seen_at, resetear el contador de fallos y refrescar flags
-        await supabaseAdmin
-          .from('items')
-          .update({
-            last_seen_at: new Date().toISOString(),
-            fetch_failures: 0,
-            category_id: mlData.category_id ?? undefined,
-            category_name: categoryName,
-            free_shipping: mlData.free_shipping,
-            shipping_mode: mlData.shipping_mode,
-            condition: mlData.condition,
-            seller_id: mlData.seller_id ?? undefined
-          })
-          .eq('id', item.id)
+        const patch: Record<string, unknown> = {
+          last_seen_at: new Date().toISOString(),
+          fetch_failures: 0,
+          category_id: mlData.category_id ?? undefined,
+          category_name: categoryName,
+          seller_id: mlData.seller_id ?? undefined
+        }
+
+        // Los /up/ se resuelven por las publicaciones de abajo, que no nos
+        // dicen nada del envío ni del estado del producto. Escribir los
+        // defaults acá pisaría con false/null los datos buenos que cargó la
+        // extensión desde la página real.
+        if (mlData.source !== 'user_product') {
+          patch.free_shipping = mlData.free_shipping
+          patch.shipping_mode = mlData.shipping_mode
+          patch.condition = mlData.condition
+        }
+
+        await supabaseAdmin.from('items').update(patch).eq('id', item.id)
 
         // Alertas: ahora SÍ esperamos. Antes era fire-and-forget y en serverless
         // la promesa se corta cuando la respuesta se devuelve. El cooldown de
@@ -332,6 +340,7 @@ export async function GET(request: Request) {
         lookupFailed: catLookupFailed,
         fromProduct,
         fromItem,
+        fromUserProduct,
         fromListing: catFromListing
       },
       statusCount,
