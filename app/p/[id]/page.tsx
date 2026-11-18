@@ -280,18 +280,22 @@ export async function generateMetadata({ params }: RouteContext): Promise<Metada
     ? `${item.title.slice(0, 70)} — Historial de precios | Lupa Precios`
     : 'Historial de precios — Lupa Precios'
 
-  // Una ficha con menos de 2 registros no tiene historial que mostrar. La
-  // dejamos fuera del índice (pero follow, para que Google siga los links)
-  // hasta que el cron le junte datos.
-  let points = 0
+  // Qué ficha entra al índice.
+  //
+  // La regla vive en es_item_indexable() y es la MISMA que usa el sitemap. Que
+  // una URL esté en el sitemap y la página diga noindex es peor que no estar:
+  // le estás dando a Google instrucciones contradictorias.
+  //
+  // Pide dos registros de precio Y que el precio se haya movido alguna vez, o
+  // que tengamos análisis de opiniones propio. Con 2 registros del mismo
+  // precio el gráfico es una línea recta y la ficha no aporta nada que no
+  // tenga ya la publicación de ML — y son justo las páginas que le enseñan a
+  // Google que el sitio no vale la pena. Al 17-nov eran 1.304.
+  let indexable = false
   if (item?.id) {
-    const { count } = await supabaseAdmin
-      .from('price_history')
-      .select('id', { count: 'exact', head: true })
-      .eq('item_id', item.id)
-    points = count ?? 0
+    const { data } = await supabaseAdmin.rpc('es_item_indexable', { p_item_id: item.id })
+    indexable = data === true
   }
-  const indexable = points >= 2
 
   return {
     title,
