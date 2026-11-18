@@ -123,7 +123,7 @@ export default function DashboardClient({
       const res = await fetch('/api/alerts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_id: itemId, target_price: target, alert_type: 'below' })
+        body: JSON.stringify({ item_id: itemId, target_price: target, alert_type: 'below', source: 'dashboard' })
       })
       const data = await res.json()
       if (!res.ok) {

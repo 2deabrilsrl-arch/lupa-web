@@ -13,6 +13,7 @@ interface Props {
   sugerido: number
   yaExiste: number | null
   email: string | null
+  source: 'extension' | 'dashboard'
 }
 
 function formatPrice(value: number, currency: string) {
@@ -47,7 +48,8 @@ export default function AlertaClient(props: Props) {
         body: JSON.stringify({
           item_id: props.itemId,
           target_price: valor,
-          alert_type: 'below'
+          alert_type: 'below',
+          source: props.source
         })
       })
       if (!res.ok) {

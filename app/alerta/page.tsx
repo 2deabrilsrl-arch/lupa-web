@@ -29,9 +29,9 @@ interface ItemRow {
 export default async function AlertaPage({
   searchParams
 }: {
-  searchParams: Promise<{ ml?: string; precio?: string }>
+  searchParams: Promise<{ ml?: string; precio?: string; utm_source?: string }>
 }) {
-  const { ml, precio } = await searchParams
+  const { ml, precio, utm_source } = await searchParams
 
   const mlItemId = (ml ?? '').trim().toUpperCase()
   if (!/^[A-Z]{3}U?[0-9]+$/.test(mlItemId)) {
@@ -44,7 +44,8 @@ export default async function AlertaPage({
     // intactos. Sin esto el usuario caía en el panel y había que buscar el
     // producto de nuevo a mano, que es justamente lo que queremos evitar.
     const destino = `/alerta?ml=${encodeURIComponent(mlItemId)}` +
-      (precio ? `&precio=${encodeURIComponent(precio)}` : '')
+      (precio ? `&precio=${encodeURIComponent(precio)}` : '') +
+      (utm_source ? `&utm_source=${encodeURIComponent(utm_source)}` : '')
     redirect(`/api/auth/login?next=${encodeURIComponent(destino)}`)
   }
 
@@ -116,6 +117,7 @@ export default async function AlertaPage({
       sugerido={sugerido}
       yaExiste={existente ? Number(existente.target_price) : null}
       email={user.email || null}
+      source={utm_source === 'extension' ? 'extension' : 'dashboard'}
     />
   )
 }

@@ -7,6 +7,8 @@ interface CreatePayload {
   target_price: number
   alert_type?: 'below' | 'drop_percent' | 'any_change'
   drop_percent?: number
+  /** De dónde salió: "extension" (botón del widget) o "dashboard". */
+  source?: string
 }
 
 export async function POST(request: Request) {
@@ -51,6 +53,21 @@ export async function POST(request: Request) {
     .eq('item_id', itemId)
     .eq('is_active', true)
 
+  // Sólo aceptamos valores conocidos: el origen viene de la query string de
+  // una página pública y no queremos texto libre del navegante en la base.
+  const ORIGENES = ['extension', 'dashboard']
+  const source = ORIGENES.includes(body.source ?? '') ? body.source! : null
+
+  // Crear una alerta desde el widget sólo se puede con la extensión puesta.
+  // Es la única prueba que tenemos: /api/extension/track es anónimo y no sabe
+  // qué usuario es, así que extension_installed nunca se seteaba.
+  if (source === 'extension') {
+    await supabaseAdmin
+      .from('users')
+      .update({ extension_installed: true })
+      .eq('id', user.id)
+  }
+
   const { data, error } = await supabaseAdmin
     .from('alerts')
     .insert({
@@ -58,6 +75,7 @@ export async function POST(request: Request) {
       item_id: itemId,
       target_price: targetPrice,
       alert_type: alertType,
+      source,
       drop_percent: body.drop_percent ?? null,
       is_active: true
     })
