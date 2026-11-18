@@ -347,6 +347,7 @@ export default async function ProductPage({ params }: RouteContext) {
               <span>Lupa Precios</span>
             </a>
             <nav className="site-nav">
+            <a href="/historial-de-precios" className="nav-link-secondary">Historial de precios</a>
               <a href="/api/auth/login" className="nav-login">Iniciar sesión</a>
             </nav>
           </div>
