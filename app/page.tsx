@@ -1,3 +1,4 @@
+import { productPath } from '@/lib/seo'
 import { supabaseAdmin } from '@/lib/supabase'
 import { formatPrice, flagForSite } from '@/lib/format'
 import { installUrl } from '@/lib/config'
@@ -102,7 +103,7 @@ export default async function Home({
             </div>
             <div className="home-deals-grid">
               {homeDeals.map(d => (
-                <a key={d.item_id} href={`/p/${d.ml_item_id}`} className="deal-card">
+                <a key={d.item_id} href={productPath(d.ml_item_id, d.title)} className="deal-card">
                   {d.drop_pct >= 5 && (
                     <span className="deal-badge badge-good">−{Math.round(d.drop_pct)}%</span>
                   )}

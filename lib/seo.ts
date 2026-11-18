@@ -20,6 +20,25 @@ export function slugify(text: string): string {
     .slice(0, 80)
 }
 
+/**
+ * Ruta de una ficha de producto, con el nombre del producto en la URL.
+ *
+ * Antes era /p/MLA57465499 a secas. El competidor argentino directo
+ * (mejorescompras.com.ar) usa /precio/MLA61371148--oximetro-de-pulso-digital-...
+ * y nos gana las consultas: Google lee la URL, y el usuario también la ve en
+ * el resultado de búsqueda.
+ *
+ * No hace falta ruta nueva ni redirecciones de ida: extractMlItemId() no está
+ * anclado, así que /p/MLA57465499-lo-que-sea ya resolvía al mismo producto
+ * desde siempre. Lo único que faltaba era generarla.
+ *
+ * Si no hay título, devuelve la forma corta: nunca una URL con el slug vacío.
+ */
+export function productPath(mlItemId: string, title?: string | null): string {
+  const slug = title ? slugify(title) : ''
+  return slug ? `/p/${mlItemId}-${slug}` : `/p/${mlItemId}`
+}
+
 export interface PricePoint {
   price: number
   captured_at: string

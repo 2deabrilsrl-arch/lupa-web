@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next'
 import { supabaseAdmin } from '@/lib/supabase'
-import { BASE_URL, slugify } from '@/lib/seo'
+import { BASE_URL, slugify, productPath } from '@/lib/seo'
 
 /**
  * Sitemap completo en /sitemap.xml.
@@ -21,6 +21,10 @@ const MAX_URLS = 45000
 
 interface SitemapItem {
   ml_item_id: string
+  // Opcional a propósito: si el deploy del código llega antes que la
+  // migración que le suma title a get_indexable_items, productPath() cae a la
+  // URL corta en vez de generar un slug vacío.
+  title?: string | null
   last_price_at: string | null
 }
 
@@ -83,7 +87,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const batch = (itemsRaw as SitemapItem[] | null) ?? []
     for (const i of batch) {
       productUrls.push({
-        url: `${BASE_URL}/p/${i.ml_item_id}`,
+        url: `${BASE_URL}${productPath(i.ml_item_id, i.title)}`,
         lastModified: i.last_price_at ? new Date(i.last_price_at) : now,
         changeFrequency: 'daily' as const,
         priority: 0.7

@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { supabaseAdmin } from '@/lib/supabase'
 import { formatPrice, flagForSite, countryNameForSite, SUPPORTED_SITES } from '@/lib/format'
-import { BASE_URL, slugify } from '@/lib/seo'
+import { BASE_URL, slugify, productPath } from '@/lib/seo'
 
 export const revalidate = 3600
 
@@ -158,7 +158,7 @@ export default async function CategoriaPage({
           ) : (
             <div className="home-deals-grid">
               {items.map(it => (
-                <a key={it.ml_item_id} href={`/p/${it.ml_item_id}`} className="deal-card">
+                <a key={it.ml_item_id} href={productPath(it.ml_item_id, it.title)} className="deal-card">
                   <div className="deal-card-img">
                     {it.thumbnail_url ? (
                       // eslint-disable-next-line @next/next/no-img-element

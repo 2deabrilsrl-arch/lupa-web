@@ -1,10 +1,10 @@
 import type { Metadata } from 'next'
-import { notFound } from 'next/navigation'
+import { notFound, permanentRedirect } from 'next/navigation'
 import { supabaseAdmin } from '@/lib/supabase'
 import { extractMlItemId } from '@/lib/ml-url'
 import { fetchMlInfo } from '@/lib/ml-fetch'
 import { mlWebUrl, formatPrice } from '@/lib/format'
-import { BASE_URL, buildPriceSummary, slugify, COUNTRY_BY_SITE } from '@/lib/seo'
+import { BASE_URL, buildPriceSummary, slugify, productPath, COUNTRY_BY_SITE } from '@/lib/seo'
 import PriceChart from './PriceChart'
 import { installUrl } from '@/lib/config'
 
@@ -302,12 +302,12 @@ export async function generateMetadata({ params }: RouteContext): Promise<Metada
     description: item?.title
       ? `Evolución del precio de "${item.title.slice(0, 90)}" en MercadoLibre: mínimo, máximo y promedio de los últimos 90 días. Descubrí si el descuento es real antes de comprar.`
       : 'Historial de precios para productos de MercadoLibre.',
-    alternates: { canonical: `${BASE_URL}/p/${mlId}` },
+    alternates: { canonical: `${BASE_URL}${productPath(mlId, item?.title)}` },
     robots: indexable ? { index: true, follow: true } : { index: false, follow: true },
     openGraph: {
       title,
       type: 'website',
-      url: `${BASE_URL}/p/${mlId}`,
+      url: `${BASE_URL}${productPath(mlId, item?.title)}`,
       images: item?.thumbnail_url ? [{ url: item.thumbnail_url }] : undefined
     }
   }
@@ -319,6 +319,21 @@ export default async function ProductPage({ params }: RouteContext) {
   if (!mlId) notFound()
 
   const data = await loadProduct(mlId)
+
+  // Una sola URL por producto.
+  //
+  // /p/MLA57465499 y /p/MLA57465499-licuadora-ninja llevan a la misma ficha
+  // desde siempre, porque extractMlItemId() no está anclado. Ahora que
+  // generamos la forma con nombre, la corta redirige a la larga en vez de
+  // convivir con ella: dos URLs vivas para el mismo contenido parten las
+  // señales entre las dos y Google tiene que elegir.
+  //
+  // Sólo redirige si hay destino distinto, así que no hay ciclo posible. Si el
+  // título cambia (el cron los limpia), el slug viejo redirige al nuevo.
+  if (data?.item?.title) {
+    const canonico = productPath(mlId, data.item.title).slice('/p/'.length)
+    if (id !== canonico) permanentRedirect(`/p/${canonico}`)
+  }
 
   // Gracefully handle items that ML restricts (e.g. Tiendas Oficiales, B2B)
   if (!data) {
@@ -403,7 +418,7 @@ export default async function ProductPage({ params }: RouteContext) {
       url: `${BASE_URL}/categoria/${categorySlug}`
     })
   }
-  breadcrumbItems.push({ name: item.title, url: `${BASE_URL}/p/${item.ml_item_id}` })
+  breadcrumbItems.push({ name: item.title, url: `${BASE_URL}${productPath(item.ml_item_id, item.title)}` })
 
   const jsonLd = [
     {
@@ -656,7 +671,7 @@ export default async function ProductPage({ params }: RouteContext) {
               </div>
               <div className="home-deals-grid">
                 {similar.map(sp => (
-                  <a key={sp.ml_item_id} href={`/p/${sp.ml_item_id}`} className="deal-card">
+                  <a key={sp.ml_item_id} href={productPath(sp.ml_item_id, sp.title)} className="deal-card">
                     <div className="deal-card-img">
                       {sp.thumbnail_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
