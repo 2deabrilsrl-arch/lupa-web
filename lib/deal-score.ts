@@ -13,6 +13,7 @@
  */
 import { supabaseAdmin } from './supabase'
 import { fetchSellerInfo } from './ml-fetch'
+import { detectarInflado } from './inflado'
 
 export interface DealScoreFactors {
   price: number
@@ -121,22 +122,19 @@ function shippingScore(item: ItemRow): number {
   return 40
 }
 
-function detectFakeDiscount(stats: PriceHistoryStats, history: { price: number; captured_at: string }[]): { detected: boolean; detail: string | null } {
-  if (!stats.latest_original || stats.latest_original <= stats.latest) {
-    return { detected: false, detail: null }
-  }
-  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
-  const last30 = history.filter(h => new Date(h.captured_at).getTime() >= cutoff)
-  if (last30.length < 2) return { detected: false, detail: null }
-  const minLast30 = Math.min(...last30.map(h => Number(h.price)))
-  if (minLast30 < stats.latest_original * 0.95) {
-    return {
-      detected: true,
-      detail:
-        `El precio ya estuvo en $${Math.round(minLast30).toLocaleString('es-AR')} en los últimos 30 días — el "precio anterior" de $${Math.round(stats.latest_original).toLocaleString('es-AR')} parece inflado.`
-    }
-  }
-  return { detected: false, detail: null }
+/**
+ * Delegado a lib/inflado.ts, que tiene la regla y sus tests.
+ *
+ * La anterior comparaba contra el mínimo de 30 días y, por falta de datos,
+ * sólo alcanzaba al 4% del catálogo: en 48 h se recalcularon 8.695 productos
+ * y marcó cero. Ver el comentario de lib/inflado.ts para el detalle.
+ */
+function detectFakeDiscount(
+  stats: PriceHistoryStats,
+  history: { price: number; captured_at: string }[]
+): { detected: boolean; detail: string | null } {
+  const v = detectarInflado(stats.latest_original, stats.latest, history)
+  return { detected: v.detected, detail: v.detail }
 }
 
 export async function computeDealScore(itemId: number): Promise<DealScoreResult | null> {

@@ -114,18 +114,25 @@ export default async function MetodologiaPage() {
             <h2>Cuándo decimos que un descuento está inflado</h2>
             <p>
               Cuando el precio “anterior” que muestra la publicación no
-              coincide con lo que el producto venía costando de verdad.
-              En concreto: miramos el precio más bajo registrado en los
-              <strong> últimos 30 días</strong> y, si ese precio es menor al
-              “anterior” anunciado por más de un 5%, mostramos el aviso.
+              coincide con lo que el producto venía costando de verdad. En
+              concreto: tomamos los precios de los <strong>últimos 90 días</strong>,
+              calculamos el <strong>percentil 75</strong> —el valor por debajo
+              del cual estuvo tres de cada cuatro veces— y mostramos el aviso
+              si el “anterior” anunciado lo supera por más de un{' '}
+              <strong>15%</strong>.
             </p>
             <p>
-              Dicho en criollo: si el producto ya se vendió a $100 en el último
-              mes y la promoción dice “antes $150, ahora $120”, ese $150 no es
-              un precio que la gente haya pagado.
+              Dicho en criollo: si tres de cada cuatro veces el producto costó
+              $100 o menos, y la promoción dice “antes $150, ahora $120”, ese
+              $150 no describe lo que la gente venía pagando.
+            </p>
+            <p>
+              Usamos el percentil y no el precio mínimo a propósito. Una sola
+              caída puntual —un vendedor liquidando stock un día— no debería
+              condenar todos los descuentos de los tres meses siguientes.
             </p>
             <p className="meto-nota">
-              Necesitamos al menos dos registros de precio en esos 30 días para
+              Necesitamos al menos dos registros de precio en esos 90 días para
               opinar. Con uno solo no hay con qué comparar, y preferimos no
               decir nada antes que acusar mal a un vendedor.
             </p>
@@ -156,8 +163,9 @@ export default async function MetodologiaPage() {
               </li>
               <li>
                 <strong>En un país con inflación, un precio viejo no es
-                comparable sin más.</strong> Por eso la ventana es de 30 días y
-                no de un año.
+                comparable sin más.</strong> Por eso la ventana es de 90 días y
+                no de un año, y por eso comparamos contra el percentil 75 y no
+                contra el precio más bajo que encontramos.
               </li>
             </ul>
           </section>
