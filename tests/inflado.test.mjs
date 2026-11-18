@@ -39,8 +39,25 @@ test('una caída puntual no condena los 90 días siguientes', () => {
 
 test('se calla cuando no tiene con qué comparar', () => {
   assert.equal(detectarInflado(150000, 120000, [], AHORA).detected, false)
-  const uno = [{ price: 100000, captured_at: hace(5) }]
-  assert.equal(detectarInflado(150000, 120000, uno, AHORA).detected, false)
+  // Hasta 3 observaciones no opinamos: el percentil 75 de dos valores es
+  // apenas el más alto de los dos, y la frase "3 de cada 4 veces" sería falsa.
+  for (const n of [1, 2, 3]) {
+    const pocos = Array.from({ length: n }, (_, k) => ({
+      price: 100000, captured_at: hace(k + 2)
+    }))
+    assert.equal(
+      detectarInflado(150000, 120000, pocos, AHORA).detected,
+      false,
+      `con ${n} registro(s) no debería opinar`
+    )
+  }
+})
+
+test('el mensaje dice cuántos precios respaldan el veredicto', () => {
+  const h = [5, 10, 20, 30, 40].map(d => ({ price: 100000, captured_at: hace(d) }))
+  const v = detectarInflado(150000, 120000, h, AHORA)
+  assert.equal(v.detected, true)
+  assert.match(v.detail, /Registramos 5 precios/)
 })
 
 test('ignora el historial viejo fuera de la ventana', () => {

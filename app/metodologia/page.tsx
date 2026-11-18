@@ -132,9 +132,11 @@ export default async function MetodologiaPage() {
               condenar todos los descuentos de los tres meses siguientes.
             </p>
             <p className="meto-nota">
-              Necesitamos al menos dos registros de precio en esos 90 días para
-              opinar. Con uno solo no hay con qué comparar, y preferimos no
-              decir nada antes que acusar mal a un vendedor.
+              Necesitamos al menos <strong>cuatro</strong> registros de precio
+              en esos 90 días para opinar. Con dos, el percentil 75 es apenas
+              el más alto de los dos y no describe nada. Acá estamos señalando
+              a vendedores concretos: preferimos no decir nada antes que acusar
+              mal a alguien. Cada aviso dice cuántos precios lo respaldan.
             </p>
           </section>
 

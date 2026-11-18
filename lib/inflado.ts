@@ -34,10 +34,22 @@ export const VENTANA_DIAS = 90
 export const MARGEN = 1.15
 
 /**
- * Mínimo de registros para opinar. Con menos no hay con qué comparar, y
- * preferimos callarnos antes que acusar mal a un vendedor.
+ * Mínimo de registros para opinar.
+ *
+ * Era 2 y está mal por dos razones. Con dos observaciones el percentil 75 es
+ * básicamente el más alto de los dos, así que la "referencia" no es un
+ * percentil de nada. Y el mensaje decía "3 de cada 4 veces costó X o menos"
+ * cuando sólo teníamos 2 precios: eso es, directamente, falso.
+ *
+ * Con 4 el percentil ya interpola entre valores distintos y la frase describe
+ * lo que de verdad medimos. Baja la cobertura de 530 productos a 70 hoy, pero
+ * acá estamos señalando a vendedores concretos: 70 avisos que se sostienen
+ * valen más que 530 que no.
+ *
+ * El cron recorre el catálogo en menos de dos días, así que la cobertura
+ * vuelve sola.
  */
-export const MIN_REGISTROS = 2
+export const MIN_REGISTROS = 4
 
 export interface PuntoPrecio {
   price: number
@@ -96,8 +108,8 @@ export function detectarInflado(
     detected: true,
     referencia: p75,
     detail:
-      `En los últimos ${VENTANA_DIAS} días, 3 de cada 4 veces este producto ` +
-      `costó ${fmt(p75)} o menos. El "antes" de ${fmt(precioAnterior)} está ` +
-      `un ${exceso}% por encima de eso.`
+      `Registramos ${ventana.length} precios de este producto en los últimos ` +
+      `${VENTANA_DIAS} días: 3 de cada 4 veces costó ${fmt(p75)} o menos. ` +
+      `El "antes" de ${fmt(precioAnterior)} está un ${exceso}% por encima.`
   }
 }
