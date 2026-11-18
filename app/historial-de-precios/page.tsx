@@ -223,6 +223,18 @@ export default async function HistorialDePreciosPage() {
           )}
 
           <section className="hub-section">
+            <h2>Cómo medimos</h2>
+            <p className="hub-alt">
+              Los precios salen de la API de MercadoLibre y de las páginas que
+              visitan quienes usan la extensión. No estimamos ni completamos
+              huecos. Si querés el detalle —cada cuánto tomamos los datos, cuándo
+              decimos que un descuento está inflado y qué cosas todavía no
+              podemos afirmar—{' '}
+              <a href="/metodologia">leé nuestra metodología</a>.
+            </p>
+          </section>
+
+          <section className="hub-section">
             <h2>Preguntas frecuentes</h2>
             <div className="hub-faq">
               {faqs.map(f => (
