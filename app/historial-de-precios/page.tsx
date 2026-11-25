@@ -203,7 +203,9 @@ export default async function HistorialDePreciosPage() {
             <p className="hub-alt">
               En cada ficha marcamos con un aviso los casos donde el precio
               “antes” no coincide con lo que el producto venía costando.{' '}
-              <a href="/ofertas">Mirá las ofertas que sí son reales</a>.
+              <a href="/descuentos-falsos">Mirá los descuentos inflados que
+              detectamos</a> o <a href="/ofertas">las ofertas que sí son
+              reales</a>.
             </p>
           </section>
 

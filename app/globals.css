@@ -1319,3 +1319,61 @@ a:hover { text-decoration: underline; }
   .meto-nota { background: #0f2231; }
   .meto-fecha { color: #9ca3af; }
 }
+
+/* ---- /descuentos-falsos ---- */
+.df-container { max-width: 760px; }
+.df-lista { list-style: none; margin: 24px 0 36px; padding: 0; }
+.df-item { margin-bottom: 10px; }
+.df-link {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  text-decoration: none;
+  color: inherit;
+}
+.df-link:hover { border-color: #4D9DCE; }
+.df-thumb { border-radius: 6px; object-fit: contain; flex-shrink: 0; background: #f9fafb; }
+.df-thumb-vacio { width: 56px; height: 56px; }
+.df-cuerpo { min-width: 0; flex: 1; }
+.df-titulo { font-weight: 600; font-size: 14.5px; line-height: 1.35; }
+.df-bandera { margin-right: 5px; }
+.df-precios {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 6px;
+  font-size: 14px;
+}
+.df-antes { text-decoration: line-through; color: #9ca3af; }
+.df-flecha { color: #9ca3af; }
+.df-ahora { font-weight: 700; }
+.df-badge {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 600;
+}
+.df-evidencia {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #374151;
+  padding-left: 9px;
+  border-left: 2px solid #fca5a5;
+}
+.df-meta { margin-top: 6px; font-size: 11.5px; color: #9ca3af; }
+.df-aclaracion { border-top: 1px solid #e5e7eb; padding-top: 24px; }
+
+@media (prefers-color-scheme: dark) {
+  .df-link { background: #111827; border-color: #374151; }
+  .df-thumb { background: #1f2937; }
+  .df-evidencia { color: #d1d5db; }
+  .df-badge { background: #450a0a; color: #fca5a5; }
+  .df-aclaracion { border-color: #374151; }
+}
